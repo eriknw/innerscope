@@ -1,8 +1,13 @@
 # Innerscope
 
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/master/LICENSE)
+[![Build Status](https://travis-ci.org/eriknw/innerscope.svg?branch=master)](https://travis-ci.org/eriknw/innerscope)
+[![Coverage Status](https://coveralls.io/repos/eriknw/innerscope/badge.svg?branch=master)](https://coveralls.io/r/eriknw/innerscope)
+[![Code style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 `innerscope` exposes the inner scope of functions and offers primitives suitable for creating pipelines.  It explores a design space around functions, dictionaries, and classes.
 
-A function can be made like a dictionary:
+A function can be made to act like a dictionary:
 ```python
 @innerscope.call
 def info():
@@ -113,3 +118,4 @@ It's all [@mrocklin's](https://github.com/mrocklin) fault for [asking a question
 I bet it would even be useful for building pipelines with dask.
 
 #### *This library is totally awesome and you should use it and tell all your friends* 😉 *!*
+
