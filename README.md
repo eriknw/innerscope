@@ -101,8 +101,10 @@ True
 {'closure_y', 'global_x'}
 >>> paranoid_g()
 ```
-<pre style='color:red'>NameError: Undefined variables: 'global_x', 'closure_y'.
-Use `bind` method to assign values for these names before calling.</pre>
+```diff
+- NameError: Undefined variables: 'global_x', 'closure_y'.
+- Use `bind` method to assign values for these names before calling.</pre>
+```
 ```python
 >>> new_g = paranoid_g.bind({'global_x': 100, 'closure_y': 200})
 >>> new_g.missing
