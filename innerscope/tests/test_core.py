@@ -245,3 +245,11 @@ def test_inner_and_outer_variable():
 
     with raises(UnboundLocalError, match="hahaha$"):
         f3()
+
+
+def test_default_args():
+    @innerscope.callwith(0, z=3)
+    def f(w, x=1, *args, y=2, z, **kwargs):
+        pass
+
+    assert f == {"w": 0, "x": 1, "y": 2, "z": 3, "args": (), "kwargs": {}}
