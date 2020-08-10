@@ -21,5 +21,16 @@ after_success:
     - pip install coveralls
     - coveralls
 
+# publish new version tags to pypi
+deploy:
+    provider: pypi
+    skip_existing: true
+    on:
+        tags: true
+    user: __token__
+    password:
+        secure: SirrUpRfngSRRha1sFzx7ZrTT6P4QLNllpuTSV/Qgy9qAd7BjKr0QP2pTMZ4DkKOmmw/BNjXWizGq+tgzwIi6oMBfQhCudqt4KhABTLiRBaZLmBr3+Qaj20TtBwZ7yr/kpi34Aq2cZRzqMUhd2Kx8sPJ5HqPmQodS5mhLnDnbgpj3hlISo+mp0ipuQdUsOfU4Qj9a94J/B3Ggktm+23HYcMePV6Da2/hKOHftMbziOf1gyiMLJnuz6np8qHr5A9GmEc4mku+J9b0JioMa9RjJfeiMIQGFOfLIvjWSna+IUBvadCpHiK3KHEF5OnY9GzHXu+5tYsqNQbzht5GaxAQe4ItvgpI8wxPslQmYAlZDZnT5UP0ap1GJNsShbqt9ykk6P8ogi6Hb7cZHSp4uMzA3Po1PNNHpgX4keJ9C36kSHqSUx9agLZxFkfB/qIgtgnp0pJPF/E04an6+9WyZLYNSQmcmftiAJT/wR2GDxqpY9MoH5Y6Pijk+jRGW64j3pF/ZrEfqIGpbS3vKFhOjqytFcNtON7vYMKdzkQi4c1Uc7G4k650UsIsCJvSSZXMiWm3sm5E0f1hvTFXoSCa3I9rcemePlrtZ5l+1ohzQq+s5EcbGT9igYVCEHsJt/FgM/GvLsublHL8USRQG1O5oRRdlH1A473SSZ/Hf7Uqw3/akgg=
+    distributions: "sdist bdist_wheel"
+
 notifications:
   email: false

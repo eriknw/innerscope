@@ -239,7 +239,10 @@ class ScopedFunction:
             self.func = None
         else:
             new_code = code.replace(co_code=co_code, co_names=co_names)
-            self.func = FunctionType(new_code, self.outer_scope, closure=closure)
+            self.func = FunctionType(
+                new_code, self.outer_scope, argdefs=self.orig_func.__defaults__, closure=closure
+            )
+            self.func.__kwdefaults__ = self.orig_func.__kwdefaults__
 
     def __call__(self, *args, **kwargs):
         if self.missing:
