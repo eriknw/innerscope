@@ -7,7 +7,7 @@
 
 `innerscope` exposes the inner scope of functions and offers primitives suitable for creating pipelines.  It explores a design space around functions, dictionaries, and classes.
 
-A function can be made like a dictionary:
+A function can be made to act like a dictionary:
 ```python
 @innerscope.call
 def info():
