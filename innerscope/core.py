@@ -281,7 +281,7 @@ class ScopedFunction:
 
         This returns a new ScopedFunction object and leaves the original unmodified.
 
-        >>> @ScopedFunction
+        >>> @scoped_function
         ... def makez_cheezburger():
         ...     bun = ...
         ...     patty = ...
