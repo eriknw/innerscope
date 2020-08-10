@@ -1,0 +1,25 @@
+sudo: false
+language: python
+os: linux
+dist: xenial
+
+python:
+    - "3.8"
+    - "3.9-dev"
+
+install:
+    - pip install toolz coverage pytest flake8 black
+    - pip install -e .
+
+script:
+    - coverage run --branch -m pytest --doctest-modules
+    - flake8
+    - black innerscope --check --diff
+
+after_success:
+    - coverage report --show-missing
+    - pip install coveralls
+    - coveralls
+
+notifications:
+  email: false
