@@ -5,7 +5,7 @@ with open("README.md") as f:
 
 setup(
     name="innerscope",
-    version="0.0.1",
+    version="0.0.2dev",
     description="Expose the inner scope of functions",
     long_description=long_description,
     long_description_content_type="text/markdown",

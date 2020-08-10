@@ -1,5 +1,6 @@
 # Innerscope
 
+[![Version](https://img.shields.io/pypi/v/innerscope.svg)](https://pypi.org/project/innerscope/)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/master/LICENSE)
 [![Build Status](https://travis-ci.org/eriknw/innerscope.svg?branch=master)](https://travis-ci.org/eriknw/innerscope)
 [![Coverage Status](https://coveralls.io/repos/eriknw/innerscope/badge.svg?branch=master)](https://coveralls.io/r/eriknw/innerscope)
