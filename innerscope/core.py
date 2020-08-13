@@ -1,9 +1,9 @@
 import builtins
 import dis
 import functools
-import tlz
 from collections.abc import Mapping
 from types import CellType, FunctionType
+from tlz import assoc, concatv, merge
 
 
 class Scope(Mapping):
@@ -12,15 +12,17 @@ class Scope(Mapping):
     This is the return value when a `ScopedFunction` is called.
     """
 
-    def __init__(self, scoped_function, return_value, inner_scope):
+    def __init__(self, scoped_function, outer_scope, return_value, inner_scope):
         if type(inner_scope) is not dict:
             raise TypeError("inner_scope argument to Scope must be a dict")
         self.scoped_function = scoped_function
+        del outer_scope["__builtins__"]
+        self.outer_scope = outer_scope
+        for key in scoped_function._code.co_freevars:
+            # closures show up in locals, but we want them in outer_scope
+            del inner_scope[key]
         self.inner_scope = inner_scope
-        self.outer_scope = scoped_function.outer_scope
         self.return_value = return_value
-        self._keys = inner_scope.keys() | scoped_function.outer_scope.keys()
-        self._keys.remove("__builtins__")
 
     def __getitem__(self, key):
         if key in self.inner_scope:
@@ -28,10 +30,10 @@ class Scope(Mapping):
         return self.outer_scope[key]
 
     def __iter__(self):
-        return iter(self._keys)
+        return concatv(self.outer_scope, self.inner_scope)
 
     def __len__(self):
-        return len(self._keys)
+        return len(self.outer_scope) + len(self.inner_scope)
 
     def bindto(self, func, *, use_closures=None, use_globals=None):
         """ Bind the variables of this object to a function.
@@ -159,6 +161,9 @@ class Scope(Mapping):
 
         return callwith_inner
 
+    def __repr__(self):
+        return f"Scope({dict(self)!r})"
+
 
 class ScopedFunction:
     """ Use to expose the inner scope of a wrapped function after being called.
@@ -182,14 +187,14 @@ class ScopedFunction:
         self.use_closures = use_closures
         self.use_globals = use_globals
         if isinstance(func, ScopedFunction):
-            self.orig_func = func.orig_func
-            code = func.orig_func.__code__
-            outer_scope = tlz.merge(func.outer_scope, *mappings)
+            self.func = func.func
+            code = func.func.__code__
+            outer_scope = merge(func.outer_scope, *mappings)
         else:
-            self.orig_func = func
+            self.func = func
             code = func.__code__
-            outer_scope = tlz.merge(mappings)
-        functools.update_wrapper(self, self.orig_func)
+            outer_scope = merge(mappings)
+        functools.update_wrapper(self, self.func)
 
         # Modify to end with `return locals()`
         locals_index = len(code.co_names)
@@ -208,43 +213,40 @@ class ScopedFunction:
         )
 
         # Only keep variables needed by the function
-        names = (
-            name for name in tlz.concatv(code.co_freevars, code.co_names) if name in outer_scope
-        )
-        self.outer_scope = {key: outer_scope[key] for key in names}
+        outer_scope = {
+            key: outer_scope[key] for key in code.co_names + code.co_freevars if key in outer_scope
+        }
+        self.outer_scope = outer_scope
+        self.inner_names = set(code.co_varnames + code.co_cellvars)
         if code.co_freevars:
             if use_closures:
                 # If this is a closure, move the enclosed variabled to `outer_scope`.
                 # Also, use values already in `outer_scope` instead of the original closures.
-                for name, cell in zip(code.co_freevars, self.orig_func.__closure__):
-                    if name not in self.outer_scope:
-                        self.outer_scope[name] = cell.cell_contents
-            closure = tuple(CellType(self.outer_scope.get(name)) for name in code.co_freevars)
+                for name, cell in zip(code.co_freevars, self.func.__closure__):
+                    if name not in outer_scope:
+                        outer_scope[name] = cell.cell_contents
+            self._closure = tuple(CellType(outer_scope.get(name)) for name in code.co_freevars)
         else:
-            closure = None
+            self._closure = None
         if use_globals:
-            func_globals = self.orig_func.__globals__
+            func_globals = self.func.__globals__
             for name in code.co_names:
-                if name not in self.outer_scope and name in func_globals:
-                    self.outer_scope[name] = func_globals[name]
-        self.outer_scope["__builtins__"] = builtins
+                if name not in outer_scope and name in func_globals:
+                    outer_scope[name] = func_globals[name]
         self.missing = {
             name
             for name in code.co_names
-            if name not in self.outer_scope and not hasattr(builtins, name)
+            if name not in outer_scope and not hasattr(builtins, name)
         }
         if not use_closures:
-            self.missing.update(name for name in code.co_freevars if name not in self.outer_scope)
+            self.missing.update(name for name in code.co_freevars if name not in outer_scope)
         if self.missing:
-            self.func = None
+            self._code = None
         else:
-            new_code = code.replace(
+            # stacksize must be at least 2, because we make a length two tuple
+            self._code = code.replace(
                 co_code=co_code, co_names=co_names, co_stacksize=max(code.co_stacksize, 2),
             )
-            self.func = FunctionType(
-                new_code, self.outer_scope, argdefs=self.orig_func.__defaults__, closure=closure
-            )
-            self.func.__kwdefaults__ = self.orig_func.__kwdefaults__
 
     def __call__(self, *args, **kwargs):
         if self.missing:
@@ -252,8 +254,14 @@ class ScopedFunction:
                 f"Undefined variables: {', '.join(repr(name) for name in self.missing)}.\n"
                 "Use `bind` method to assign values for these names before calling."
             )
+        # Should we use builtins, builtins.__dict__, or self.func.__globals__['__builtins__']?
+        outer_scope = assoc(self.outer_scope, "__builtins__", builtins)
+        func = FunctionType(
+            self._code, outer_scope, argdefs=self.func.__defaults__, closure=self._closure
+        )
+        func.__kwdefaults__ = self.func.__kwdefaults__
         try:
-            results = self.func(*args, **kwargs)
+            results = func(*args, **kwargs)
         except UnboundLocalError as exc:
             message = exc.args and exc.args[0] or ""
             if message.startswith("local variable ") and message.endswith(
@@ -274,7 +282,7 @@ class ScopedFunction:
             else:
                 raise
         try:
-            return Scope(self, *results)
+            return Scope(self, outer_scope, *results)
         except TypeError:
             raise ValueError(
                 "Function wrapped by ScopedFunction must return at the very end of the function."
@@ -301,7 +309,7 @@ class ScopedFunction:
         True
         """
         return ScopedFunction(
-            self.orig_func,
+            self.func,
             self.outer_scope,
             *mappings,
             kwargs,
