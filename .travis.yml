@@ -13,7 +13,7 @@ install:
 
 script:
     - coverage run --branch -m pytest --doctest-modules
-    - flake8 innerscope
+    - flake8
     - black innerscope --check --diff
 
 after_success:
