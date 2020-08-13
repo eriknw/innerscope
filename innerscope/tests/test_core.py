@@ -46,6 +46,14 @@ def test_no_args():
     check(scoped_function(sf2.func, scope1))
 
 
+def test_repr():
+    @innerscope.call
+    def f():
+        x = 1
+
+    assert repr(f) == "Scope({'x': 1})"
+
+
 def test_no_args_call():
     def f1():
         a = 1
@@ -197,6 +205,7 @@ def test_closures():
     scoped_g = scoped_function(g)
     assert scoped_g.inner_names == {"arg_g", "local_z"}
     assert scoped_g.outer_scope == {"global_x": 1, "arg_f": 1, "nonlocal_y": 2}
+    assert scoped_g(3) == {"arg_f": 1, "nonlocal_y": 2, "global_x": 1, "arg_g": 3, "local_z": 7}
 
 
 def test_has_builtins():
