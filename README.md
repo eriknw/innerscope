@@ -16,11 +16,14 @@ def info():
     first_name = 'Erik'
     last_name = 'Welch'
     full_name = f'{first_name} {last_name}'
+    return 'success!'
 
 >>> info['first_name']
 'Erik'
 >>> info['full_name']
 'Erik Welch'
+>>> info.return_value
+'success!'
 ```
 Sometimes we want functions to be more *functional* and accept arguments:
 ```python
@@ -114,7 +117,7 @@ set()
 True
 ```
 ## How?
-This library requires surprisingly little magic.  Perhaps I'll explain it some day.  Here's a hint: the wrapped function shouldn't have any return statements.
+This library requires surprisingly little magic.  Perhaps I'll explain it some day.  Here's a hint: the wrapped function should only return at the very end of the function.
 
 ## Why?
 It's all [@mrocklin's](https://github.com/mrocklin) fault for [asking a question.](https://github.com/dask/distributed/issues/4003)
