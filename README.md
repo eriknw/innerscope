@@ -76,7 +76,7 @@ True
 def step2(d):
     e = max(a + d, b + c)
 
->>> step2.outer_scope == {'a': 1, 'b': 2, 'c': 3, '__builtins__': __builtins__}
+>>> step2.outer_scope == {'a': 1, 'b': 2, 'c': 3}
 True
 >>> scope2 = step2(4)
 >>> scope2 == {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5}
