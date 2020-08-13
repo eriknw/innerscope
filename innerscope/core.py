@@ -3,7 +3,7 @@ import dis
 import functools
 from collections.abc import Mapping
 from types import CellType, FunctionType
-from tlz import assoc, concatv, merge
+from tlz import concatv, merge
 
 
 class Scope(Mapping):
@@ -13,14 +13,8 @@ class Scope(Mapping):
     """
 
     def __init__(self, scoped_function, outer_scope, return_value, inner_scope):
-        if type(inner_scope) is not dict:
-            raise TypeError("inner_scope argument to Scope must be a dict")
         self.scoped_function = scoped_function
-        del outer_scope["__builtins__"]
         self.outer_scope = outer_scope
-        for key in scoped_function._code.co_freevars:
-            # closures show up in locals, but we want them in outer_scope
-            del inner_scope[key]
         self.inner_scope = inner_scope
         self.return_value = return_value
 
@@ -196,17 +190,18 @@ class ScopedFunction:
             outer_scope = merge(mappings)
         functools.update_wrapper(self, self.func)
 
-        # Modify to end with `return locals()`
-        locals_index = len(code.co_names)
-        co_names = code.co_names + ("locals",)
+        # Modify to end with `return (rv, locals(), secret)`
+        co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
         co_code = code.co_code[:-2] + bytes(
             [
                 dis.opmap["LOAD_GLOBAL"],
-                locals_index,
+                len(code.co_names),
                 dis.opmap["CALL_FUNCTION"],
                 0,
+                dis.opmap["LOAD_GLOBAL"],
+                len(code.co_names) + 1,
                 dis.opmap["BUILD_TUPLE"],
-                2,
+                3,
                 dis.opmap["RETURN_VALUE"],
                 0,
             ]
@@ -243,9 +238,9 @@ class ScopedFunction:
         if self.missing:
             self._code = None
         else:
-            # stacksize must be at least 2, because we make a length two tuple
+            # stacksize must be at least 3, because we make a length three tuple
             self._code = code.replace(
-                co_code=co_code, co_names=co_names, co_stacksize=max(code.co_stacksize, 2),
+                co_code=co_code, co_names=co_names, co_stacksize=max(code.co_stacksize, 3),
             )
 
     def __call__(self, *args, **kwargs):
@@ -255,7 +250,10 @@ class ScopedFunction:
                 "Use `bind` method to assign values for these names before calling."
             )
         # Should we use builtins, builtins.__dict__, or self.func.__globals__['__builtins__']?
-        outer_scope = assoc(self.outer_scope, "__builtins__", builtins)
+        outer_scope = self.outer_scope.copy()
+        outer_scope["__builtins__"] = builtins
+        outer_scope["_innerscope_locals_"] = locals
+        outer_scope["_innerscope_secret_"] = secret = object()
         func = FunctionType(
             self._code, outer_scope, argdefs=self.func.__defaults__, closure=self._closure
         )
@@ -282,11 +280,20 @@ class ScopedFunction:
             else:
                 raise
         try:
-            return Scope(self, outer_scope, *results)
-        except TypeError:
-            raise ValueError(
-                "Function wrapped by ScopedFunction must return at the very end of the function."
-            )
+            return_value, inner_scope, expect_secret = results
+            if secret is expect_secret:
+                del outer_scope["__builtins__"]
+                del outer_scope["_innerscope_locals_"]
+                del outer_scope["_innerscope_secret_"]
+                # closures show up in locals, but we want them only in outer_scope
+                for key in self._code.co_freevars:
+                    del inner_scope[key]
+                return Scope(self, outer_scope, return_value, inner_scope)
+        except Exception:
+            pass
+        raise ValueError(
+            "Function wrapped by ScopedFunction must return at the very end of the function."
+        )
 
     def bind(self, *mappings, **kwargs):
         """ Bind variables to a function's outer scope.
