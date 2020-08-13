@@ -1,21 +1,14 @@
+import versioneer
 from setuptools import setup, find_packages
+
 
 with open("README.md") as f:
     long_description = f.read()
 
-# Maybe we should use versioneer.py instead
-with open("innerscope/__init__.py") as f:
-    lines = f.readlines()
-for line in lines:
-    if line.startswith("__version__"):
-        _, version, _ = line.split('"')
-        break
-else:
-    raise ValueError("__version__ not found.  Aborting!")
-
 setup(
     name="innerscope",
-    version=version,
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     description="Expose the inner scope of functions",
     long_description=long_description,
     long_description_content_type="text/markdown",
