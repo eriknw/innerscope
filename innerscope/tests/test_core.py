@@ -268,7 +268,7 @@ def test_early_return():
     @scoped_function
     def g(boolean):
         if boolean:
-            return (2, 2)
+            return (1, 2, 3)
         a = 1
         b = a + 1
 
