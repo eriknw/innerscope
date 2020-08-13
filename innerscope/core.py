@@ -12,11 +12,14 @@ class Scope(Mapping):
     This is the return value when a `ScopedFunction` is called.
     """
 
-    def __init__(self, scoped_function, inner_scope):
+    def __init__(self, scoped_function, return_value, inner_scope):
+        if type(inner_scope) is not dict:
+            raise TypeError("inner_scope argument to Scope must be a dict")
         self.scoped_function = scoped_function
         self.inner_scope = inner_scope
         self.outer_scope = scoped_function.outer_scope
-        self._keys = set(inner_scope.keys() | scoped_function.outer_scope.keys())
+        self.return_value = return_value
+        self._keys = inner_scope.keys() | scoped_function.outer_scope.keys()
         self._keys.remove("__builtins__")
 
     def __getitem__(self, key):
@@ -188,20 +191,17 @@ class ScopedFunction:
             outer_scope = tlz.merge(mappings)
         functools.update_wrapper(self, self.orig_func)
 
-        # Should end with returning None (either explicitly or implicitly)
-        expected_code = bytes([dis.opmap["LOAD_CONST"], 0, dis.opmap["RETURN_VALUE"], 0])
-        if code.co_code[-4:] != expected_code:
-            raise ValueError("Function wrapped by ScopedFunction must not return anything.")
-
         # Modify to end with `return locals()`
         locals_index = len(code.co_names)
         co_names = code.co_names + ("locals",)
-        co_code = code.co_code[:-4] + bytes(
+        co_code = code.co_code[:-2] + bytes(
             [
                 dis.opmap["LOAD_GLOBAL"],
                 locals_index,
                 dis.opmap["CALL_FUNCTION"],
                 0,
+                dis.opmap["BUILD_TUPLE"],
+                2,
                 dis.opmap["RETURN_VALUE"],
                 0,
             ]
@@ -238,7 +238,9 @@ class ScopedFunction:
         if self.missing:
             self.func = None
         else:
-            new_code = code.replace(co_code=co_code, co_names=co_names)
+            new_code = code.replace(
+                co_code=co_code, co_names=co_names, co_stacksize=max(code.co_stacksize, 2),
+            )
             self.func = FunctionType(
                 new_code, self.outer_scope, argdefs=self.orig_func.__defaults__, closure=closure
             )
@@ -251,7 +253,7 @@ class ScopedFunction:
                 "Use `bind` method to assign values for these names before calling."
             )
         try:
-            inner_scope = self.func(*args, **kwargs)
+            results = self.func(*args, **kwargs)
         except UnboundLocalError as exc:
             message = exc.args and exc.args[0] or ""
             if message.startswith("local variable ") and message.endswith(
@@ -271,13 +273,12 @@ class ScopedFunction:
                 )
             else:
                 raise
-
-        if type(inner_scope) is not dict:
+        try:
+            return Scope(self, *results)
+        except TypeError:
             raise ValueError(
-                "Function wrapped by ScopedFunction must not return anything.  "
-                f"Got a return value of type {type(inner_scope)}."
+                "Function wrapped by ScopedFunction must return at the very end of the function."
             )
-        return Scope(self, inner_scope)
 
     def bind(self, *mappings, **kwargs):
         """ Bind variables to a function's outer scope.

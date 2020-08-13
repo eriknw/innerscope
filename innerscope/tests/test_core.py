@@ -197,12 +197,28 @@ def test_raises_error():
         f()
 
 
-def test_bad_return():
-    with raises(ValueError, match="must not return anything"):
+def test_return_values():
+    @innerscope.call
+    def f1():
+        pass
 
-        @scoped_function
-        def f():
-            return 5  # pragma: no cover
+    assert f1.return_value is None
+    assert f1 == {}
+
+    @innerscope.call
+    def f2():
+        return 5
+
+    assert f2.return_value == 5
+    assert f2 == {}
+
+    @innerscope.callwith(0)
+    def f3(x):
+        y = x + 1
+        return x + 1 + y
+
+    assert f3.return_value == 2
+    assert f3 == {"x": 0, "y": 1}
 
 
 def test_early_return():
@@ -215,9 +231,21 @@ def test_early_return():
         b = a + 1
 
     # But we can check the return type
-    with raises(ValueError, match="must not return anything"):
+    with raises(ValueError, match="must return at the very end of the function"):
         f(True)
     scope = f(False)
+    assert scope == dict(a=1, b=2, boolean=False)
+
+    @scoped_function
+    def g(boolean):
+        if boolean:
+            return (2, 2)
+        a = 1
+        b = a + 1
+
+    with raises(ValueError, match="must return at the very end of the function"):
+        g(True)
+    scope = g(False)
     assert scope == dict(a=1, b=2, boolean=False)
 
 
