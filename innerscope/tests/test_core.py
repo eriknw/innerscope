@@ -1,7 +1,10 @@
 import pytest
-from pytest import raises
+import builtins
 import innerscope
+from pytest import raises
 from innerscope import scoped_function
+
+global_x = 1
 
 
 def test_no_args():
@@ -21,6 +24,7 @@ def test_no_args():
 
     def check(f2bound):
         assert not f2bound.missing
+        assert f2bound.inner_names == {"c"}
         assert f2bound.outer_scope["b"] == 2
         scope2 = f2bound()
         assert scope2 == dict(b=2, c=3)
@@ -37,9 +41,17 @@ def test_no_args():
     check(sf2.bind({"b": 2}))
     check(sf2.bind(scope1))
     check(scope1.bindto(sf2))
-    check(scope1.bindto(sf2.orig_func))
+    check(scope1.bindto(sf2.func))
     check(scoped_function(sf2, scope1))
-    check(scoped_function(sf2.orig_func, scope1))
+    check(scoped_function(sf2.func, scope1))
+
+
+def test_repr():
+    @innerscope.call
+    def f():
+        x = 1
+
+    assert repr(f) == "Scope({'x': 1})"
 
 
 def test_no_args_call():
@@ -170,13 +182,30 @@ def test_use_closure():
 
 def test_use_globals():
     def f1():
-        x = innerscope
+        x = global_x
 
     assert not scoped_function(f1, use_globals=True).missing
-    assert scoped_function(f1, use_globals=False).missing == {"innerscope"}
-    assert scoped_function(f1, use_globals=True)() == {"x": innerscope, "innerscope": innerscope}
-    scope = scoped_function(f1, {"innerscope": 1}, use_globals=True)()
-    assert scope == {"x": 1, "innerscope": 1}
+    assert scoped_function(f1, use_globals=False).missing == {"global_x"}
+    assert scoped_function(f1, use_globals=True)() == {"x": 1, "global_x": 1}
+    scope = scoped_function(f1, {"global_x": 1}, use_globals=True)()
+    assert scope == {"x": 1, "global_x": 1}
+
+
+def test_closures():
+    def f(arg_f):
+        nonlocal_y = 2
+
+        def g(arg_g):
+            local_z = global_x + nonlocal_y + arg_f + arg_g
+
+        return g
+
+    assert scoped_function(f).inner_names == {"arg_f", "nonlocal_y", "g"}
+    g = f(1)
+    scoped_g = scoped_function(g)
+    assert scoped_g.inner_names == {"arg_g", "local_z"}
+    assert scoped_g.outer_scope == {"global_x": 1, "arg_f": 1, "nonlocal_y": 2}
+    assert scoped_g(3) == {"arg_f": 1, "nonlocal_y": 2, "global_x": 1, "arg_g": 3, "local_z": 7}
 
 
 def test_has_builtins():
