@@ -247,13 +247,17 @@ def test_early_return():
     @scoped_function
     def f(boolean):
         if boolean:
-            return
+            return 42
         a = 1
         b = a + 1
 
     # But we can check the return type
-    with raises(ValueError, match="must return at the very end of the function"):
-        f(True)
+    # with raises(ValueError, match="must return at the very end of the function"):
+    #     f(True)
+    scope = f(True)
+    assert scope == {"boolean": True}
+    assert scope.return_value == 42
+
     scope = f(False)
     assert scope == dict(a=1, b=2, boolean=False)
 
@@ -264,8 +268,12 @@ def test_early_return():
         a = 1
         b = a + 1
 
-    with raises(ValueError, match="must return at the very end of the function"):
-        g(True)
+    # with raises(ValueError, match="must return at the very end of the function"):
+    #     g(True)
+    scope = g(True)
+    assert scope == {"boolean": True}
+    assert scope.return_value == (1, 2, 3)
+
     scope = g(False)
     assert scope == dict(a=1, b=2, boolean=False)
 

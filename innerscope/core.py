@@ -285,9 +285,30 @@ class ScopedFunction:
             outer_scope = merge(mappings)
         functools.update_wrapper(self, self.func)
 
+        co_code = code.co_code[:-2]
+        if len(co_code) < 255:
+            # Change RETURN_VALUE to JUMP_ABSOLUTE--we'll add code to the end.
+            # I don't want to change the code size yet, so only do this for small functions.
+            # For large functions, we'll need to use EXTENDED_ARG before JUMP_ABSOLUTE, and
+            # then we need to worry about updating relative and absolute jumps.
+            return_indices = [
+                inst.offset
+                for inst in dis.get_instructions(self.func)
+                if inst.opname == "RETURN_VALUE"
+            ]
+            if return_indices:
+                chunks = []
+                for i in return_indices[-2::-1]:
+                    co_code, chunk = co_code[:i], co_code[i + 2 :]
+                    chunks.append(chunk)
+                chunks.append(co_code)
+                co_code = bytes([dis.opmap["JUMP_ABSOLUTE"], len(code.co_code) - 2]).join(
+                    reversed(chunks)
+                )
+
         # Modify to end with `return (rv, locals(), secret)`
         co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
-        co_code = code.co_code[:-2] + bytes(
+        co_code = co_code + bytes(
             [
                 dis.opmap["LOAD_GLOBAL"],
                 len(code.co_names),
@@ -301,6 +322,7 @@ class ScopedFunction:
                 0,
             ]
         )
+
         # co_names has more than just the global names
         global_names = {
             inst.argval for inst in dis.get_instructions(self.func) if inst.opname == "LOAD_GLOBAL"
@@ -390,7 +412,10 @@ class ScopedFunction:
         except Exception:
             pass
         raise ValueError(
-            "Function wrapped by ScopedFunction must return at the very end of the function."
+            "Only short functions wrapped by ScopedFunction may have multiple return statements."
+            "  Long functions must return at the very end of the function."
+            "\n\nIf it's important to you that this limitation is fixed, then please submit "
+            "an issue (or a pull request!) to:\nhttps://github.com/eriknw/innerscope"
         )
 
     def bind(self, *mappings, **kwargs):
