@@ -1,9 +1,47 @@
 import builtins
 import dis
 import functools
+import inspect
 from collections.abc import Mapping
 from types import CellType, FunctionType
 from tlz import concatv, merge
+
+def _get_repr_table(title, scope, add_break=False):
+    if not scope:
+        return f'{"<br>" if add_break else ""}<tt>- {title}: {{}}</tt>'
+    keys = sorted(scope)
+    vals = []
+    for key in keys:
+        val = scope[key]
+        if hasattr(val, '_repr_html_'):
+            vals.append(val._repr_html_())
+        else:
+            vals.append(repr(val))
+    contents = ''.join(f'   <tr><td><tt>{key}</tt></td><td>{val}</td></td>\n' for key, val in zip(keys, vals))
+    return (
+        '<details open>\n'
+        ' <summary style="display:list-item; outline:none;">\n'
+        f'  <tt>{title}</tt>\n'
+        ' </summary>'
+        ' <div style="padding-left:10px;padding-bottom:5px;">'
+        '  <table style="max-width:100%; border:1px solid #AAAAAA;">'
+        '   <tr><th>Name</th><th>Value</th></tr>'
+        f'   {contents}'
+        '  </table>\n </div>\n</details>\n'
+    )
+
+def _get_repr_set(title, names):
+    if not names:
+        return ''
+    contents = ''.join(f'<td><tt>{name}</tt></td>' for name in names)
+    contents = (
+        '<div style="padding-left:10px;">'
+        '<table style="max-width:100%; border:1px solid #AAAAAA; margin-top:0px; margin-bottom:8px;">'
+        f'<tr>{contents}</tr></table></div>'
+    )
+    return (
+        f'<tt>- {title}</tt>{contents}'
+    )
 
 
 class Scope(Mapping):
@@ -156,7 +194,30 @@ class Scope(Mapping):
         return callwith_inner
 
     def __repr__(self):
-        return f"Scope({dict(self)!r})"
+        inner = repr(self.inner_scope)
+        if len(inner) < 120:
+            inner = f'    inner_scope: {inner},\n'
+        else:
+            inner = ', '.join(repr(x) for x in sorted(self.inner_scope))
+            inner = f'    inner_scope.keys(): {{{inner}}},\n'
+        outer = repr(self.outer_scope)
+        if len(outer) < 120:
+            outer = f'    outer_scope: {outer},\n'
+        else:
+            outer = ', '.join(repr(x) for x in sorted(self.outer_scope))
+            outer = f'    outer_scope.keys(): {{{outer}}},\n'
+        return f'<Scope\n{inner}{outer}>'
+
+    def _repr_html_(self):
+        outer = _get_repr_table('outer_scope', self.outer_scope, add_break=True)
+        inner = _get_repr_table('inner_scope', self.inner_scope, add_break=not self.outer_scope)
+        return (
+            '<div style="max-width:100%;">\n'
+            '<b>Scope</b>\n'
+            f'{outer}'
+            f'{inner}'
+            '</div>'
+        )
 
 
 class ScopedFunction:
@@ -279,7 +340,7 @@ class ScopedFunction:
                     f"    - Don't assign to {name}; use a different name for the local variable.\n"
                     "\n"
                     "If it's important to you that this limitation is fixed, then please submit "
-                    "an issue (or a pull request!) to https://github.com/eriknw/innerscope"
+                    "an issue (or a pull request!) to:\nhttps://github.com/eriknw/innerscope"
                 ) from exc
             else:
                 raise
@@ -328,6 +389,91 @@ class ScopedFunction:
             use_globals=self.use_globals,
         )
 
+    def __repr__(self):
+        func = self.func
+        sig = inspect.signature(func)
+        func = f'    func: {func.__module__}.{func.__name__}{sig},\n'
+        inner = ', '.join(repr(x) for x in sorted(self.inner_names))
+        inner = f'    inner_scope: {{{inner}}},\n'
+        outer = repr(self.outer_scope)
+        if len(outer) < 120:
+            outer = f'    outer_scope: {outer},\n'
+        else:
+            outer = ', '.join(repr(x) for x in sorted(self.outer_scope))
+            outer = f'    outer_scope.keys(): {{{outer}}},\n'
+        if self.missing:
+            missing = ', '.join(repr(x) for x in sorted(self.missing))
+            missing = f'    missing: {{{missing}}},\n'
+        else:
+            missing=''
+        return f'<ScopedFunction\n{func}{inner}{outer}{missing}>'
+
+    def _repr_html_(self):
+        func = self.func
+        sig = inspect.signature(func)
+        """
+        func = (
+            '<tt>func</tt>'
+            '<table style="max-width:100%; border:1px solid #AAAAAA; margin-top:0px; margin-bottom:8px">'
+            # '<table style="max-width:100%; border:1px solid #AAAAAA; display:inline-table;">'
+            f'<tr><td><tt>{func.__module__}.{func.__name__}{sig}</tt></td></tr></table>'
+        )
+        # func = f'<tt>{"func".rjust(length)}:  {func.__module__}.{func.__name__}{sig}</tt>'
+        """
+
+        func = f'{func.__module__}.{func.__name__}{sig}'
+        func = _get_repr_set('func', [func])
+        inner = _get_repr_set('inner_names', self.inner_names)
+        missing = _get_repr_set('missing', self.missing)
+        outer = _get_repr_table('outer_scope', self.outer_scope)
+        return (
+            '<div><b>ScopedFunction</b><br>\n'
+            # '<table style="max-width:100%;">\n'
+            # '<table style="max-width:100%; border:1px solid #AAAAAA;">\n'
+            f'{func}\n'
+            f'{inner}\n'
+            f'{missing}\n'
+            f'{outer}\n'
+            '</div>'
+        )
+
+
+
+
+
+        func = self.func
+        sig = inspect.signature(func)
+        # func = f'<tt>- func: {func.__module__}.{func.__name__}{sig}</tt>\n'
+        func = (
+            f'<tr><td><tt>func:</tt></td>'
+            '<td style="text-align:left;"><tt>'
+            f'{func.__module__}.{func.__name__}{sig}'
+            '</tt></td></tr>'
+        )
+        outer = _get_repr_table('outer_scope', self.outer_scope)
+        missing = _get_repr_set('missing', self.missing)
+        inner = _get_repr_set('inner_names', self.inner_names)
+        return (
+            '<div><b>ScopedFunction</b>\n'
+            '<table style="max-width:100%;">\n'
+            # '<table style="max-width:100%; border:1px solid #AAAAAA;">\n'
+            f'{func}\n'
+            f'{inner}\n'
+            f'{missing}\n'
+            # f'</table>{outer}</div>'
+            f'<td colspan="2" style="text-align:left;">{outer}</td>\n'
+            '</table></div>'
+        )
+        """
+            '<div style="max-width:100%;">\n'
+            '<b>ScopedFunction</b><br>\n'
+            f'{func}<br>\n'
+            f'{inner}<br>\n'
+            f'{missing}<br>\n'
+            f'{outer}'
+            '</div>'
+        )
+        """
 
 def scoped_function(func=None, *mappings, use_closures=True, use_globals=True):
     """ Use to expose the inner scope of a wrapped function after being called.
