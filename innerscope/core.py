@@ -156,7 +156,7 @@ class Scope(Mapping):
         return self.bindto(func)(*args, **kwargs)
 
     def callwith(self, *args, **kwargs):
-        """
+        """ ♪ But here's my number, so call me maybe ♪
 
         >>> @call
         ... def haz_cheezburger():
