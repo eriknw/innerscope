@@ -228,10 +228,14 @@ class ScopedFunction:
             for name in code.co_names:
                 if name not in outer_scope and name in func_globals:
                     outer_scope[name] = func_globals[name]
+        # attribute access goes in co_names too
+        attrs = {
+            inst.argval for inst in dis.get_instructions(self.func) if inst.opname == "LOAD_ATTR"
+        }
         self.missing = {
             name
             for name in code.co_names
-            if name not in outer_scope and not hasattr(builtins, name)
+            if name not in outer_scope and name not in attrs and not hasattr(builtins, name)
         }
         if not use_closures:
             self.missing.update(name for name in code.co_freevars if name not in outer_scope)
@@ -276,7 +280,7 @@ class ScopedFunction:
                     "\n"
                     "If it's important to you that this limitation is fixed, then please submit "
                     "an issue (or a pull request!) to https://github.com/eriknw/innerscope"
-                )
+                ) from exc
             else:
                 raise
         try:
