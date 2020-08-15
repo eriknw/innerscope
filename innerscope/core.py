@@ -199,22 +199,59 @@ class Scope(Mapping):
     def __repr__(self):
         inner = repr(self.inner_scope)
         if len(inner) < 120:
-            inner = f"    inner_scope: {inner},\n"
+            inner = f" - inner_scope: {inner}\n"
         else:
             inner = ", ".join(repr(x) for x in sorted(self.inner_scope))
-            inner = f"    inner_scope.keys(): {{{inner}}},\n"
+            inner = f" - inner_scope.keys(): {{{inner}}}\n"
         outer = repr(self.outer_scope)
         if len(outer) < 120:
-            outer = f"    outer_scope: {outer},\n"
+            outer = f" - outer_scope: {outer}\n"
         else:
             outer = ", ".join(repr(x) for x in sorted(self.outer_scope))
-            outer = f"    outer_scope.keys(): {{{outer}}},\n"
-        return f"<Scope\n{inner}{outer}>"
+            outer = f" - outer_scope.keys(): {{{outer}}}\n"
+        return_value = repr(self.return_value)
+        if "\\n" in return_value:
+            return_value = return_value.replace("\\n", "\n")
+            return_value = f" - return_value:\n{return_value}"
+        else:
+            return_value = f" - return_value: {return_value}"
+        return f"Scope\n{outer}{inner}{return_value}"
 
     def _repr_html_(self):
         outer = _get_repr_table("outer_scope", self.outer_scope, add_break=True)
         inner = _get_repr_table("inner_scope", self.inner_scope, add_break=not self.outer_scope)
-        return '<div style="max-width:100%;">\n' "<b>Scope</b>\n" f"{outer}" f"{inner}" "</div>"
+        if hasattr(self.return_value, "_repr_html_"):
+            return_value = (
+                "<details open>\n"
+                ' <summary style="display:list-item; outline:none;">\n'
+                "  <tt>return_value</tt>\n"
+                " </summary>"
+                ' <div style="padding-left:10px;padding-bottom:5px;">'
+                f"{self.return_value._repr_html_()}"
+                "</div>\n</details>\n"
+            )
+        else:
+            return_value = repr(self.return_value)
+            if "\\n" in return_value:
+                if return_value.count("\\n") > 10:
+                    return_value = return_value.replace("\\n", "<br>")
+                    return_value = (
+                        "<details open>\n"
+                        ' <summary style="display:list-item; outline:none;">\n'
+                        "  <tt>return_value</tt>\n"
+                        " </summary>"
+                        ' <div style="padding-left:10px;padding-bottom:5px;">'
+                        f"{return_value}"
+                        "</div>\n</details>\n"
+                    )
+                else:
+                    return_value = return_value.replace("\\n", "<br>")
+                    return_value = f"<tt>- return_value:<br>{return_value}</tt>"
+            else:
+                return_value = f"<tt>- return_value: {return_value}</tt>"
+        if not self.inner_scope:
+            return_value = f"<br>{return_value}"
+        return f'<div style="max-width:100%;">\n<b>Scope</b>\n{outer}{inner}{return_value}</div>'
 
 
 class ScopedFunction:
@@ -264,10 +301,15 @@ class ScopedFunction:
                 0,
             ]
         )
-
-        # Only keep variables needed by the function
+        # co_names has more than just the global names
+        global_names = {
+            inst.argval for inst in dis.get_instructions(self.func) if inst.opname == "LOAD_GLOBAL"
+        }
+        # Only keep variables needed by the function (globals and closures)
         outer_scope = {
-            key: outer_scope[key] for key in code.co_names + code.co_freevars if key in outer_scope
+            key: outer_scope[key]
+            for key in concatv(global_names, code.co_freevars)
+            if key in outer_scope
         }
         self.outer_scope = outer_scope
         self.inner_names = set(code.co_varnames + code.co_cellvars)
@@ -283,17 +325,11 @@ class ScopedFunction:
             self._closure = None
         if use_globals:
             func_globals = self.func.__globals__
-            for name in code.co_names:
+            for name in global_names:
                 if name not in outer_scope and name in func_globals:
                     outer_scope[name] = func_globals[name]
-        # attribute access goes in co_names too
-        attrs = {
-            inst.argval for inst in dis.get_instructions(self.func) if inst.opname == "LOAD_ATTR"
-        }
         self.missing = {
-            name
-            for name in code.co_names
-            if name not in outer_scope and name not in attrs and not hasattr(builtins, name)
+            name for name in global_names if name not in outer_scope and not hasattr(builtins, name)
         }
         if not use_closures:
             self.missing.update(name for name in code.co_freevars if name not in outer_scope)
@@ -389,21 +425,21 @@ class ScopedFunction:
     def __repr__(self):
         func = self.func
         sig = inspect.signature(func)
-        func = f"    func: {func.__module__}.{func.__name__}{sig},\n"
+        func = f" - func: {func.__module__}.{func.__name__}{sig}\n"
         inner = ", ".join(repr(x) for x in sorted(self.inner_names))
-        inner = f"    inner_scope: {{{inner}}},\n"
+        inner = f" - inner_scope: {{{inner}}}\n"
         outer = repr(self.outer_scope)
         if len(outer) < 120:
-            outer = f"    outer_scope: {outer},\n"
+            outer = f" - outer_scope: {outer}"
         else:
             outer = ", ".join(repr(x) for x in sorted(self.outer_scope))
-            outer = f"    outer_scope.keys(): {{{outer}}},\n"
+            outer = f" - outer_scope.keys(): {{{outer}}}"
         if self.missing:
             missing = ", ".join(repr(x) for x in sorted(self.missing))
-            missing = f"    missing: {{{missing}}},\n"
+            missing = f"\n - missing: {{{missing}}}"
         else:
             missing = ""
-        return f"<ScopedFunction\n{func}{inner}{outer}{missing}>"
+        return f"ScopedFunction\n{func}{inner}{outer}{missing}"
 
     def _repr_html_(self):
         func = self.func

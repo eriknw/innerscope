@@ -46,16 +46,6 @@ def test_no_args():
     check(scoped_function(sf2.func, scope1))
 
 
-"""
-def test_repr():
-    @innerscope.call
-    def f():
-        x = 1
-
-    assert repr(f) == "Scope({'x': 1})"
-"""
-
-
 def test_no_args_call():
     def f1():
         a = 1
