@@ -285,26 +285,31 @@ class ScopedFunction:
             outer_scope = merge(mappings)
         functools.update_wrapper(self, self.func)
 
-        co_code = code.co_code[:-2]
-        if len(co_code) < 255:
-            # Change RETURN_VALUE to JUMP_ABSOLUTE--we'll add code to the end.
-            # I don't want to change the code size yet, so only do this for small functions.
-            # For large functions, we'll need to use EXTENDED_ARG before JUMP_ABSOLUTE, and
-            # then we need to worry about updating relative and absolute jumps.
-            return_indices = [
-                inst.offset
-                for inst in dis.get_instructions(self.func)
-                if inst.opname == "RETURN_VALUE"
-            ]
-            if return_indices:
-                chunks = []
-                for i in return_indices[-2::-1]:
-                    co_code, chunk = co_code[:i], co_code[i + 2 :]
-                    chunks.append(chunk)
-                chunks.append(co_code)
-                co_code = bytes([dis.opmap["JUMP_ABSOLUTE"], len(code.co_code) - 2]).join(
-                    reversed(chunks)
-                )
+        # Change RETURN_VALUE to JUMP_FORWARD.
+        # This way, even long functions can have multiple return statements as long as
+        # they are near the end or near each other.  The advantage of this is that we
+        # don't need to change the code size, which would require handling other jumps.
+        co_code = code.co_code[:-2]  # Remove the RETURN_VALUE that should be at the end
+        return_indices = [
+            inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
+        ]
+        jump_target = len(co_code)
+        target_index = len(return_indices) - 1
+        if len(return_indices) > 1:
+            chunks = []
+            for i in return_indices[-2::-1]:
+                target = jump_target - i - 2
+                while target_index > 0 and target > 255:
+                    target_index -= 1
+                    jump_target = return_indices[target_index]
+                    target = jump_target - i - 2
+                if target_index == 0 or target > 255 or target < 0:
+                    break
+                co_code, chunk = co_code[:i], co_code[i + 2 :]
+                chunks.append(chunk)
+                chunks.append(bytes([dis.opmap["JUMP_FORWARD"], target]))
+            chunks.append(co_code)
+            co_code = b"".join(reversed(chunks))
 
         # Modify to end with `return (rv, locals(), secret)`
         co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
@@ -411,9 +416,34 @@ class ScopedFunction:
                 return Scope(self, outer_scope, return_value, inner_scope)
         except Exception:
             pass
+        return_indices = [
+            inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
+        ]
+        jump_target = len(func.__code__.co_code) - 2
+        target_index = len(return_indices) - 1
+        bad_returns = []
+        for i in return_indices[-2::-1]:
+            target = jump_target - i - 2
+            while target_index > 0 and target > 255:
+                target_index -= 1
+                jump_target = return_indices[target_index]
+                target = jump_target - i - 2
+            if target_index == 0 or target > 255 or target < 0:
+                target_index = 0
+                bad_returns.append(i)
+        if len(bad_returns) == 1:
+            return_msg = "The first return statement is too far away."
+        else:
+            return_msg = f"The first {len(bad_returns)} return statements are too far away."
+        next_closest = return_indices[len(bad_returns)] - bad_returns[0]
         raise ValueError(
-            "Only short functions wrapped by ScopedFunction may have multiple return statements."
-            "  Long functions must return at the very end of the function."
+            "This may sound weird, but functions wrapped by ScopedFunction should have "
+            "return statements that are close together or near the end of the function.  "
+            "By close, I mean that each return statement in the compiled code should be "
+            "within 256 bytes of another return statement or the end of the function.  "
+            "Worried?  Don't be :).  This limitation is to ensure `innerscope` is rock-solid!"
+            f"\n\n{return_msg}  The next closest return statement is {next_closest} bytes away."
+            "\n\nA cute workaround is to add code such as `if bool(): return`."
             "\n\nIf it's important to you that this limitation is fixed, then please submit "
             "an issue (or a pull request!) to:\nhttps://github.com/eriknw/innerscope"
         )
