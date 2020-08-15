@@ -117,7 +117,7 @@ set()
 True
 ```
 ## How?
-This library requires surprisingly little magic.  Perhaps I'll explain it some day.  Here's a hint: the wrapped function should only return at the very end of the function.
+This library required surprisingly little magic at first.  Perhaps I'll explain it some day.  I mean, it does modify the bytecode, so it's a little magical and sinful, but it does so in a very reliable way, so you should feel comfortable using this library.
 
 ## Why?
 It's all [@mrocklin's](https://github.com/mrocklin) fault for [asking a question.](https://github.com/dask/distributed/issues/4003)
