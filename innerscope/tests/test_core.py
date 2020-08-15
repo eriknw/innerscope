@@ -247,13 +247,17 @@ def test_early_return():
     @scoped_function
     def f(boolean):
         if boolean:
-            return
+            return 42
         a = 1
         b = a + 1
 
     # But we can check the return type
-    with raises(ValueError, match="must return at the very end of the function"):
-        f(True)
+    # with raises(ValueError, match="must return at the very end of the function"):
+    #     f(True)
+    scope = f(True)
+    assert scope == {"boolean": True}
+    assert scope.return_value == 42
+
     scope = f(False)
     assert scope == dict(a=1, b=2, boolean=False)
 
@@ -264,10 +268,93 @@ def test_early_return():
         a = 1
         b = a + 1
 
-    with raises(ValueError, match="must return at the very end of the function"):
-        g(True)
+    # with raises(ValueError, match="must return at the very end of the function"):
+    #     g(True)
+    scope = g(True)
+    assert scope == {"boolean": True}
+    assert scope.return_value == (1, 2, 3)
+
     scope = g(False)
     assert scope == dict(a=1, b=2, boolean=False)
+
+
+def test_difficult_return():
+    # fmt: off
+    x = 1
+
+    @scoped_function
+    def f1(arg):
+        if arg:
+            return 1
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        y = x
+        return 2
+
+    with raises(ValueError, match="The first return statement is too far away"):
+        f1(True)
+    scope = f1(False)
+    assert scope == {'arg': False,  'y': 1, 'x': 1}
+    assert scope.return_value == 2
+
+    @scoped_function
+    def f2(arg):
+        if arg == 0:
+            return 1
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        if arg == 1:
+            return 2
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        y = x
+        return 3
+
+    scope = f2(0)
+    assert scope == {'arg': 0, 'x': 1}
+    assert scope.return_value == 1
+
+    scope = f2(1)
+    assert scope == {'arg': 1, 'x': 1}
+    assert scope.return_value == 2
+    scope = f2(2)
+    assert scope == {'arg': 2, 'x': 1, 'y': 1}
+    assert scope.return_value == 3
+
+    @scoped_function
+    def f3(arg):
+        if arg == 0:
+            return 1
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        if arg == 1:
+            return (1, 2, 3)
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        if arg == 2:
+            return 3
+        y = x
+        return 4
+
+    with raises(ValueError, match="The first 2 return statements are too far away"):
+        f3(0)
+    with raises(ValueError, match="The first 2 return statements are too far away"):
+        f3(1)
+    scope = f3(2)
+    assert scope == {'arg': 2, 'x': 1}
+    assert scope.return_value == 3
+    scope = f3(3)
+    assert scope == {'arg': 3, 'x': 1, 'y': 1}
+    assert scope.return_value == 4
+    # fmt: on
 
 
 # @pytest.mark.xfail(reason="Local variable can't yet be the same name as an outer variable")
