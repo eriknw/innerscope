@@ -3,8 +3,47 @@ import dis
 import functools
 import inspect
 from collections.abc import Mapping
-from types import CellType, CodeType, FunctionType
+from types import CodeType, FunctionType
 from tlz import concatv, merge
+
+try:
+    # Added in Python 3.8
+    from types import CellType
+
+    def code_replace(code, *, co_code, co_names, co_stacksize):
+        return code.replace(
+            co_code=co_code,
+            co_names=co_names,
+            co_stacksize=co_stacksize,
+        )
+
+
+except ImportError:
+
+    def CellType(x):
+        def inner():  # pragma: no cover
+            return x
+
+        return inner.__closure__[0]
+
+    def code_replace(code, *, co_code, co_names, co_stacksize):
+        return CodeType(
+            code.co_argcount,
+            code.co_kwonlyargcount,
+            code.co_nlocals,
+            co_stacksize,
+            code.co_flags,
+            co_code,
+            code.co_consts,
+            co_names,
+            code.co_varnames,
+            code.co_filename,
+            code.co_name,
+            code.co_firstlineno,
+            code.co_lnotab,
+            code.co_freevars,
+            code.co_cellvars,
+        )
 
 
 def _get_globals_recursive(func, *, seen=None, isclass=False):
@@ -397,7 +436,8 @@ class ScopedFunction:
             self._code = None
         else:
             # stacksize must be at least 3, because we make a length three tuple
-            self._code = code.replace(
+            self._code = code_replace(
+                code,
                 co_code=co_code,
                 co_names=co_names,
                 co_stacksize=max(code.co_stacksize, 3),
