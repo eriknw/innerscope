@@ -3,8 +3,44 @@ import dis
 import functools
 import inspect
 from collections.abc import Mapping
-from types import CellType, FunctionType
+from types import CellType, CodeType, FunctionType
 from tlz import concatv, merge
+
+
+def _get_globals_recursive(func, *, seen=None, isclass=False):
+    """ Get all global names used by func and all functions and classes defined within it."""
+    if isclass:
+        global_names = set()
+        local_names = {"__name__"}
+        for inst in dis.get_instructions(func):
+            if inst.opname == "STORE_NAME":
+                local_names.add(inst.argval)
+            elif inst.opname == "LOAD_NAME":
+                if inst.argval not in local_names:
+                    global_names.add(inst.argval)
+            elif inst.opname == "LOAD_GLOBAL":  # pragma: no cover
+                global_names.add(inst.argval)
+    else:
+        global_names = {
+            inst.argval for inst in dis.get_instructions(func) if inst.opname == "LOAD_GLOBAL"
+        }
+    if seen is None:
+        seen = set()
+    num_classes = 0
+    for inst in dis.get_instructions(func):
+        if inst.opname == "LOAD_CONST" and type(inst.argval) is CodeType:
+            if num_classes > 0:
+                code_inst = next(dis.get_instructions(inst.argval))
+                isclass = code_inst.opname == "LOAD_NAME" and code_inst.argval == "__name__"
+                num_classes -= isclass
+            if inst.argval in seen:  # pragma: no cover
+                # I don't know how to get into a recursive cycle, but let's prevent it anyway.
+                continue
+            seen.add(inst.argval)
+            global_names.update(_get_globals_recursive(inst.argval, seen=seen, isclass=isclass))
+        elif inst.opname == "LOAD_BUILD_CLASS":
+            num_classes += 1
+    return global_names
 
 
 def _get_repr_table(title, scope, add_break=False):
@@ -328,10 +364,7 @@ class ScopedFunction:
             ]
         )
 
-        # co_names has more than just the global names
-        global_names = {
-            inst.argval for inst in dis.get_instructions(self.func) if inst.opname == "LOAD_GLOBAL"
-        }
+        global_names = _get_globals_recursive(self.func)
         # Only keep variables needed by the function (globals and closures)
         outer_scope = {
             key: outer_scope[key]
