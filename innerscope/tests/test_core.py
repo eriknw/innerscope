@@ -67,6 +67,11 @@ def test_no_args_call():
     check(scope1.call(f2))
     check(scope1.callwith()(f2))
 
+    with raises(TypeError, match="missing 1 required positional"):
+        scope1.call()
+    with raises(TypeError, match="missing 1 required positional"):
+        innerscope.call()
+
 
 def test_with_args():
     def f1(a):

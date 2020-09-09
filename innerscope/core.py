@@ -189,7 +189,7 @@ class Scope(Mapping):
             use_globals = self.scoped_function.use_globals
         return ScopedFunction(func, self, use_closures=use_closures, use_globals=use_globals)
 
-    def call(self, func, *args, **kwargs):
+    def call(self, *func_and_args, **kwargs):
         """Bind the variables of this object to a function and call the function.
 
         >>> @call
@@ -228,6 +228,9 @@ class Scope(Mapping):
         Scope.bindto
         Scope.callwith
         """
+        if not func_and_args:
+            raise TypeError("scope.call() missing 1 required positional argument: 'func'")
+        func, *args = func_and_args
         return self.bindto(func)(*args, **kwargs)
 
     def callwith(self, *args, **kwargs):
@@ -663,7 +666,7 @@ def bindwith(*mappings, **kwargs):
     return bindwith_inner
 
 
-def call(func, *args, **kwargs):
+def call(*func_and_args, **kwargs):
     """Useful for making simple pipelines to go from functions to scopes.
 
     >>> @call
@@ -700,6 +703,9 @@ def call(func, *args, **kwargs):
     --------
     callwith
     """
+    if not func_and_args:
+        raise TypeError("call() missing 1 required positional argument: 'func'")
+    func, *args = func_and_args
     scoped = ScopedFunction(func)
     return scoped(*args, **kwargs)
 
