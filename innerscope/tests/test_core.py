@@ -406,7 +406,6 @@ def test_list_comprehension():
 
 
 def test_inner_functions():
-
     def f():
         closure_val = 10
 

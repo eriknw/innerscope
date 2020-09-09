@@ -84,7 +84,7 @@ def _get_repr_set(title, names):
 
 
 class Scope(Mapping):
-    """ A read-only mapping of the inner and outer scope of a function.
+    """A read-only mapping of the inner and outer scope of a function.
 
     This is the return value when a `ScopedFunction` is called.
     """
@@ -107,7 +107,7 @@ class Scope(Mapping):
         return len(self.outer_scope) + len(self.inner_scope)
 
     def bindto(self, func, *, use_closures=None, use_globals=None):
-        """ Bind the variables of this object to a function.
+        """Bind the variables of this object to a function.
 
         >>> @call
         ... def haz_cheezburger():
@@ -151,7 +151,7 @@ class Scope(Mapping):
         return ScopedFunction(func, self, use_closures=use_closures, use_globals=use_globals)
 
     def call(self, func, *args, **kwargs):
-        """ Bind the variables of this object to a function and call the function.
+        """Bind the variables of this object to a function and call the function.
 
         >>> @call
         ... def haz_cheezburger():
@@ -192,7 +192,7 @@ class Scope(Mapping):
         return self.bindto(func)(*args, **kwargs)
 
     def callwith(self, *args, **kwargs):
-        """ ♪ But here's my number, so call me maybe ♪
+        """♪ But here's my number, so call me maybe ♪
 
         >>> @call
         ... def haz_cheezburger():
@@ -291,7 +291,7 @@ class Scope(Mapping):
 
 
 class ScopedFunction:
-    """ Use to expose the inner scope of a wrapped function after being called.
+    """Use to expose the inner scope of a wrapped function after being called.
 
     The wrapped function should have no return statements.  Instead of a return value,
     a `Scope` object is returned when called, which is a Mapping of the inner scope.
@@ -398,7 +398,9 @@ class ScopedFunction:
         else:
             # stacksize must be at least 3, because we make a length three tuple
             self._code = code.replace(
-                co_code=co_code, co_names=co_names, co_stacksize=max(code.co_stacksize, 3),
+                co_code=co_code,
+                co_names=co_names,
+                co_stacksize=max(code.co_stacksize, 3),
             )
 
     def __call__(self, *args, **kwargs):
@@ -482,7 +484,7 @@ class ScopedFunction:
         )
 
     def bind(self, *mappings, **kwargs):
-        """ Bind variables to a function's outer scope.
+        """Bind variables to a function's outer scope.
 
         This returns a new ScopedFunction object and leaves the original unmodified.
 
@@ -548,7 +550,7 @@ class ScopedFunction:
 
 
 def scoped_function(func=None, *mappings, use_closures=True, use_globals=True):
-    """ Use to expose the inner scope of a wrapped function after being called.
+    """Use to expose the inner scope of a wrapped function after being called.
 
     The wrapped function should have no return statements.  Instead of a return value,
     a `Scope` object is returned when called, which is a Mapping of the inner scope.
@@ -594,7 +596,7 @@ def scoped_function(func=None, *mappings, use_closures=True, use_globals=True):
 
 
 def bindwith(*mappings, **kwargs):
-    """ Bind variables to a function's outer scope, but don't yet call the function.
+    """Bind variables to a function's outer scope, but don't yet call the function.
 
     >>> @bindwith(cheez='cheddar')
     ... def makez_cheezburger():
@@ -622,7 +624,7 @@ def bindwith(*mappings, **kwargs):
 
 
 def call(func, *args, **kwargs):
-    """ Useful for making simple pipelines to go from functions to scopes.
+    """Useful for making simple pipelines to go from functions to scopes.
 
     >>> @call
     ... def haz_cheezburger():
@@ -663,7 +665,7 @@ def call(func, *args, **kwargs):
 
 
 def callwith(*args, **kwargs):
-    """ Useful for making simple pipelines to go from functions with arguments to scopes.
+    """Useful for making simple pipelines to go from functions with arguments to scopes.
 
     >>> @callwith(extra_cheez_pleez=True)
     ... def haz_cheezburger(extra_cheez_pleez=False):
