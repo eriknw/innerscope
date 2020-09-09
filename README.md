@@ -1,6 +1,6 @@
 # Innerscope
 
-[![Python Version](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9-blue)](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9-blue)
+[![Python Version](https://img.shields.io/badge/python-3.6%20%7C%203.7%20%7C%203.8%20%7C%203.9-blue)](https://img.shields.io/badge/python-3.6%20%7C%203.7%20%7C%203.8%20%7C%203.9-blue)
 [![Version](https://img.shields.io/pypi/v/innerscope.svg)](https://pypi.org/project/innerscope/)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/master/LICENSE)
 [![Build Status](https://travis-ci.org/eriknw/innerscope.svg?branch=master)](https://travis-ci.org/eriknw/innerscope)
