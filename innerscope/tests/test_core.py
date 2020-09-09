@@ -389,3 +389,79 @@ def test_default_args():
         pass
 
     assert f == {"w": 0, "x": 1, "y": 2, "z": 3, "args": (), "kwargs": {}}
+
+
+def test_list_comprehension():
+    closure_val = 2
+
+    def f():
+        y = [i for i in range(global_x)]
+        z = [j for j in range(closure_val)]
+
+    assert innerscope.call(f) == {"y": [0], "z": [0, 1], "global_x": 1, "closure_val": 2}
+    scoped_f = scoped_function(f, use_globals=False, use_closures=False)
+    assert scoped_f.missing == {"global_x", "closure_val"}
+    scope = scoped_f.bind(global_x=2, closure_val=1)()
+    assert scope == {"y": [0, 1], "z": [0], "global_x": 2, "closure_val": 1}
+
+
+def test_inner_functions():
+    def f():
+        closure_val = 10
+
+        def g():
+            y = global_x + 1
+            z = closure_val + 1
+            return y, z
+
+    scope = innerscope.call(f)
+    assert scope.keys() == {"closure_val", "g", "global_x"}
+    assert scope["g"]() == (2, 11)
+    scoped_f = scoped_function(f, use_globals=False, use_closures=False)
+    assert scoped_f.missing == {"global_x"}
+    scope = scoped_f.bind(global_x=2)()
+    assert scope.keys() == {"closure_val", "g", "global_x"}
+    assert scope["g"]() == (3, 11)
+
+
+def test_inner_class():
+    def f1():
+        class A:
+            x = global_x + 1
+
+    scope = innerscope.call(f1)
+    assert scope.keys() == {"A", "global_x"}
+    assert scope["A"].x == 2
+    scoped_f = scoped_function(f1, use_globals=False, use_closures=False)
+    assert scoped_f.missing == {"global_x"}
+    assert scoped_f.bind(global_x=2)()["A"].x == 3
+
+    a = 10
+
+    def f2():
+        b = 100
+
+        def g(self):
+            pass
+
+        class A:
+            x = global_x + 1
+
+            def __init__(self):
+                pass
+
+            y = x + 1
+            z = a + b
+            gm = g
+
+    scope = innerscope.call(f2)
+    assert scope.outer_scope.keys() == {"a", "global_x"}
+    assert scope.inner_scope.keys() == {"b", "g", "A"}
+    assert scope["A"].x == 2
+    assert scope["A"].z == 110
+    assert scope["A"]().gm() is None
+    scoped_f = scoped_function(f2, use_globals=False, use_closures=False)
+    assert scoped_f.missing == {"a", "global_x"}
+    scope = scoped_f.bind(a=20, global_x=2)()
+    assert scope["A"].x == 3
+    assert scope["A"].z == 120
