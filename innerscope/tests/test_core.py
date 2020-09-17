@@ -2,7 +2,7 @@ import pytest
 import builtins
 import innerscope
 from pytest import raises
-from innerscope import scoped_function
+from innerscope import scoped_function, cfg
 
 global_x = 1
 
@@ -298,8 +298,14 @@ def test_difficult_return():
         y = x
         return 2
 
-    with raises(ValueError, match="The first return statement is too far away"):
-        f1(True)
+    if cfg.default_method == 'bytecode':
+        with raises(ValueError, match="The first return statement is too far away"):
+            f1(True)
+    if cfg.default_method == 'trace':
+        scope = f1(True)
+        assert scope == {'x': 1, 'arg': True}
+        assert scope.return_value == 1
+
     scope = f1(False)
     assert scope == {'arg': False,  'y': 1, 'x': 1}
     assert scope.return_value == 2
@@ -349,10 +355,18 @@ def test_difficult_return():
         y = x
         return 4
 
-    with raises(ValueError, match="The first 2 return statements are too far away"):
-        f3(0)
-    with raises(ValueError, match="The first 2 return statements are too far away"):
-        f3(1)
+    if cfg.default_method == 'bytecode':
+        with raises(ValueError, match="The first 2 return statements are too far away"):
+            f3(0)
+        with raises(ValueError, match="The first 2 return statements are too far away"):
+            f3(1)
+    if cfg.default_method == 'trace':
+        scope = f3(0)
+        assert scope == {'arg': 0, 'x': 1}
+        assert scope.return_value == 1
+        scope = f3(1)
+        assert scope == {'arg': 1, 'x': 1}
+        assert scope.return_value == (1, 2, 3)
     scope = f3(2)
     assert scope == {'arg': 2, 'x': 1}
     assert scope.return_value == 3
@@ -470,3 +484,22 @@ def test_inner_class():
     scope = scoped_f.bind(a=20, global_x=2)()
     assert scope["A"].x == 3
     assert scope["A"].z == 120
+
+
+def test_bad_method():
+    def f():
+        x = 1
+
+    with raises(ValueError, match="method= argument to ScopedFunc"):
+        scoped_function(f, method="bad_method")
+    old_default = cfg.default_method
+    try:
+        cfg.default_method = "bad_method"
+        with raises(ValueError, match="method= argument to ScopedFunc"):
+            scoped_function(f)
+        cfg.default_method = "default"
+        with raises(ValueError, match="silly"):
+            scoped_function(f)
+    finally:
+        cfg.default_method = old_default
+    assert innerscope.call(f) == {"x": 1}

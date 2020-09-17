@@ -14,7 +14,9 @@ install:
     - pip install -e .
 
 script:
-    - coverage run --branch -m pytest --doctest-modules
+    - coverage run --branch -m pytest --doctest-modules --method bytecode
+    - coverage run -a --branch -m pytest --doctest-modules --method trace
+    - pytest --doctest-modules --method trace
     - flake8
     - black innerscope --check --diff
 
