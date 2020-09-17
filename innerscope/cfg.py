@@ -1,1 +1,1 @@
-default_method = "trace"
+default_method = "bytecode"
