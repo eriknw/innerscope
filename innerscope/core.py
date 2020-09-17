@@ -360,12 +360,14 @@ class ScopedFunction:
             if method == "default":
                 raise ValueError(
                     'Who would set the default method to "default"?  That\'s just silly!\n'
-                    'Please set `innerscope.cfg.default_method` back to "bytecode", and then please '
-                    "continue doing what you're doing, because it's probably something awesome :)"
+                    'Please set ``innerscope.cfg.default_method`` back to "bytecode", '
+                    "and then please continue doing what you're doing, because it's probably "
+                    "something awesome :)"
                 )
         if method not in {"bytecode", "trace"}:
             raise ValueError(
-                f'method= argument to ScopedFunc must be "bytecode", "trace", or "default".  Got {method!r}'
+                'method= argument to ScopedFunc must be "bytecode", "trace", or "default".  '
+                f"Got {method!r}.  Using the default method is recommended."
             )
         self.method = method
         if isinstance(func, ScopedFunction):
@@ -700,7 +702,11 @@ def scoped_function(func=None, *mappings, use_closures=True, use_globals=True, m
         )
 
     return ScopedFunction(
-        func, *mappings, use_closures=use_closures, use_globals=use_globals, method=method,
+        func,
+        *mappings,
+        use_closures=use_closures,
+        use_globals=use_globals,
+        method=method,
     )
 
 
