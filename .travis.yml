@@ -8,15 +8,20 @@ python:
     - 3.7
     - 3.8
     - "3.9-dev"
+    - "pypy3.6-7.1.1"
 
 install:
-    - pip install toolz coverage pytest flake8 black
+    - pip install --upgrade pip
+    - pip install toolz coverage pytest
     - pip install -e .
 
 script:
-    - coverage run --branch -m pytest --doctest-modules
-    - flake8
-    - black innerscope --check --diff
+    - coverage run --branch -m pytest --doctest-modules --method bytecode
+    - coverage run -a --branch -m pytest --doctest-modules --method trace
+    - pytest --doctest-modules --method trace
+    - if [[ $TRAVIS_PYTHON_VERSION != pypy* ]] ; then pip install flake8 black ; fi
+    - if [[ $TRAVIS_PYTHON_VERSION != pypy* ]] ; then flake8 ; fi
+    - if [[ $TRAVIS_PYTHON_VERSION != pypy* ]] ; then black innerscope --check --diff ; fi
 
 after_success:
     - coverage report --show-missing

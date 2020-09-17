@@ -2,9 +2,11 @@ import builtins
 import dis
 import functools
 import inspect
+import sys
 from collections.abc import Mapping
 from types import CodeType, FunctionType
 from tlz import concatv, merge
+from . import cfg
 
 try:
     # Added in Python 3.8
@@ -350,9 +352,24 @@ class ScopedFunction:
     2
     """
 
-    def __init__(self, func, *mappings, use_closures=True, use_globals=True):
+    def __init__(self, func, *mappings, use_closures=True, use_globals=True, method="default"):
         self.use_closures = use_closures
         self.use_globals = use_globals
+        if method == "default":
+            method = cfg.default_method
+            if method == "default":
+                raise ValueError(
+                    'Who would set the default method to "default"?  That\'s just silly!\n'
+                    'Please set ``innerscope.cfg.default_method`` back to "bytecode", '
+                    "and then please continue doing what you're doing, because it's probably "
+                    "something awesome :)"
+                )
+        if method not in {"bytecode", "trace"}:
+            raise ValueError(
+                'method= argument to ScopedFunc must be "bytecode", "trace", or "default".  '
+                f"Got {method!r}.  Using the default method is recommended."
+            )
+        self.method = method
         if isinstance(func, ScopedFunction):
             self.func = func.func
             code = func.func.__code__
@@ -457,12 +474,42 @@ class ScopedFunction:
         outer_scope["__builtins__"] = builtins
         outer_scope["_innerscope_locals_"] = locals
         outer_scope["_innerscope_secret_"] = secret = object()
+        is_trace = self.method == "trace"
+        if is_trace:
+            code = self.func.__code__
+            prev_trace = sys.gettrace()
+            info = {}
+
+            # coverage uses sys.settrace, so I don't know how to cover this function
+            def trace_func(frame, event, arg):  # pragma: no cover
+                if prev_trace is not None:
+                    prev = prev_trace(frame, event, arg)
+                    sys.settrace(trace_func)
+                else:
+                    prev = None
+                if event != "call" or frame.f_code is not func.__code__:
+                    return prev
+
+                def trace_returns(frame, event, arg):
+                    if event == "return":
+                        info["locals"] = frame.f_locals
+                    if prev is not None:
+                        prev(frame, event, arg)
+
+                frame.f_trace = trace_returns
+                return trace_returns
+
+        else:
+            code = self._code
+
         func = FunctionType(
-            self._code, outer_scope, argdefs=self.func.__defaults__, closure=self._closure
+            code, outer_scope, argdefs=self.func.__defaults__, closure=self._closure
         )
         func.__kwdefaults__ = self.func.__kwdefaults__
         try:
-            results = func(*args, **kwargs)
+            if is_trace:
+                sys.settrace(trace_func)
+            return_value = func(*args, **kwargs)
         except UnboundLocalError as exc:
             message = exc.args and exc.args[0] or ""
             if message.startswith("local variable ") and message.endswith(
@@ -482,18 +529,25 @@ class ScopedFunction:
                 ) from exc
             else:
                 raise
-        try:
-            return_value, inner_scope, expect_secret = results
-            if secret is expect_secret:
-                del outer_scope["__builtins__"]
-                del outer_scope["_innerscope_locals_"]
-                del outer_scope["_innerscope_secret_"]
-                # closures show up in locals, but we want them only in outer_scope
-                for key in self._code.co_freevars:
-                    del inner_scope[key]
-                return Scope(self, outer_scope, return_value, inner_scope)
-        except Exception:
-            pass
+        finally:
+            if is_trace:
+                sys.settrace(prev_trace)
+        if is_trace:
+            inner_scope = info["locals"]
+        else:
+            try:
+                return_value, inner_scope, expect_secret = return_value
+            except Exception:
+                expect_secret = None
+        if is_trace or secret is expect_secret:
+            del outer_scope["__builtins__"]
+            del outer_scope["_innerscope_locals_"]
+            del outer_scope["_innerscope_secret_"]
+            # closures show up in locals, but we want them only in outer_scope
+            for key in self._code.co_freevars:
+                del inner_scope[key]
+            return Scope(self, outer_scope, return_value, inner_scope)
+
         return_indices = [
             inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
         ]
@@ -523,7 +577,10 @@ class ScopedFunction:
             f"\n\n{return_msg}  The next closest return statement is {next_closest} bytes away."
             "\n\nA cute workaround is to add code such as `if bool(): return`."
             "\n\nIf it's important to you that this limitation is fixed, then please submit "
-            "an issue (or a pull request!) to:\nhttps://github.com/eriknw/innerscope"
+            "an issue (or a pull request!) to:\nhttps://github.com/eriknw/innerscope\n\n"
+            'Another workaround is to use `method="trace"` in ScopedFunction.  This will '
+            "usually work, but it will be slower and may cause havoc if `sys.settrace` is "
+            "used by anything else.  The default method is preferred if possible."
         )
 
     def bind(self, *mappings, **kwargs):
@@ -592,7 +649,7 @@ class ScopedFunction:
         )
 
 
-def scoped_function(func=None, *mappings, use_closures=True, use_globals=True):
+def scoped_function(func=None, *mappings, use_closures=True, use_globals=True, method="default"):
     """Use to expose the inner scope of a wrapped function after being called.
 
     The wrapped function should have no return statements.  Instead of a return value,
@@ -625,17 +682,32 @@ def scoped_function(func=None, *mappings, use_closures=True, use_globals=True):
 
         def inner_scoped_func(func):
             return ScopedFunction(
-                func, *mappings, use_closures=use_closures, use_globals=use_globals
+                func,
+                *mappings,
+                use_closures=use_closures,
+                use_globals=use_globals,
+                method=method,
             )
 
         return inner_scoped_func
 
     if isinstance(func, Mapping):
         return scoped_function(
-            None, func, *mappings, use_closures=use_closures, use_globals=use_globals
+            None,
+            func,
+            *mappings,
+            use_closures=use_closures,
+            use_globals=use_globals,
+            method=method,
         )
 
-    return ScopedFunction(func, *mappings, use_closures=use_closures, use_globals=use_globals)
+    return ScopedFunction(
+        func,
+        *mappings,
+        use_closures=use_closures,
+        use_globals=use_globals,
+        method=method,
+    )
 
 
 def bindwith(*mappings, **kwargs):
