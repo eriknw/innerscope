@@ -1,10 +1,11 @@
 import builtins
 import dis
 import functools
+import html
 import inspect
 import sys
 from collections.abc import Mapping
-from types import CodeType, FunctionType
+from types import CodeType, FunctionType, MethodType
 from tlz import concatv, merge
 from . import cfg
 
@@ -94,7 +95,7 @@ def _get_repr_table(title, scope, add_break=False):
         if hasattr(val, "_repr_html_"):
             vals.append(val._repr_html_())
         else:
-            vals.append(repr(val))
+            vals.append(html.escape(repr(val)))
     contents = "".join(
         f"   <tr><td><tt>{key}</tt></td><td>{val}</td></td>\n" for key, val in zip(keys, vals)
     )
@@ -189,7 +190,7 @@ class Scope(Mapping):
             use_closures = self.scoped_function.use_closures
         if use_globals is None:
             use_globals = self.scoped_function.use_globals
-        return ScopedFunction(func, self, use_closures=use_closures, use_globals=use_globals)
+        return scoped_function(func, self, use_closures=use_closures, use_globals=use_globals)
 
     def call(self, *func_and_args, **kwargs):
         """Bind the variables of this object to a function and call the function.
@@ -311,7 +312,7 @@ class Scope(Mapping):
                 "</div>\n</details>\n"
             )
         else:
-            return_value = repr(self.return_value)
+            return_value = html.escape(repr(self.return_value))
             if "\\n" in return_value:
                 if return_value.count("\\n") > 10:
                     return_value = return_value.replace("\\n", "<br>")
@@ -366,8 +367,8 @@ class ScopedFunction:
                 )
         if method not in {"bytecode", "trace"}:
             raise ValueError(
-                'method= argument to ScopedFunc must be "bytecode", "trace", or "default".  '
-                f"Got {method!r}.  Using the default method is recommended."
+                f'method= argument to {type(self).__name__} must be "bytecode", "trace", or '
+                f'"default".  Got {method!r}.  Using the default method is recommended.'
             )
         self.method = method
         if isinstance(func, ScopedFunction):
@@ -379,6 +380,16 @@ class ScopedFunction:
             code = func.__code__
             outer_scope = merge(mappings)
         functools.update_wrapper(self, self.func)
+        if inspect.iscoroutinefunction(self.func):
+            raise ValueError(
+                f"{type(self).__name__} does not yet work on coroutine functions.  "
+                "I'm curious what exactly you're trying to do.  Please share :)"
+            )
+        if inspect.isasyncgenfunction(self.func):
+            raise ValueError(
+                f"{type(self).__name__} does not yet work on async generator functions.  "
+                "I'm curious what exactly you're trying to do.  Please share :)"
+            )
 
         # Change RETURN_VALUE to JUMP_FORWARD.
         # This way, even long functions can have multiple return statements as long as
@@ -464,6 +475,10 @@ class ScopedFunction:
             )
 
     def __call__(self, *args, **kwargs):
+        [scope] = self._call(args, kwargs)
+        return scope
+
+    def _call(self, args, kwargs):
         if self.missing:
             raise NameError(
                 f"Undefined variables: {', '.join(repr(name) for name in self.missing)}.\n"
@@ -510,10 +525,14 @@ class ScopedFunction:
             if is_trace:
                 sys.settrace(trace_func)
             return_value = func(*args, **kwargs)
+            if type(self) is ScopedGeneratorFunction:
+                return_value = yield from return_value
         except UnboundLocalError as exc:
             message = exc.args and exc.args[0] or ""
-            if message.startswith("local variable ") and message.endswith(
-                " referenced before assignment"
+            if (
+                isinstance(message, str)
+                and message.startswith("local variable ")
+                and message.endswith(" referenced before assignment")
             ):
                 name = message[len("local variable ") : -len(" referenced before assignment")]
                 raise UnboundLocalError(
@@ -546,7 +565,12 @@ class ScopedFunction:
             # closures show up in locals, but we want them only in outer_scope
             for key in self._code.co_freevars:
                 del inner_scope[key]
-            return Scope(self, outer_scope, return_value, inner_scope)
+            rv = Scope(self, outer_scope, return_value, inner_scope)
+            if type(self) is ScopedGeneratorFunction:
+                return rv
+            else:
+                yield rv
+                return
 
         return_indices = [
             inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
@@ -569,7 +593,7 @@ class ScopedFunction:
             return_msg = f"The first {len(bad_returns)} return statements are too far away."
         next_closest = return_indices[len(bad_returns)] - bad_returns[0]
         raise ValueError(
-            "This may sound weird, but functions wrapped by ScopedFunction should have "
+            f"This may sound weird, but functions wrapped by {type(self).__name__} should have "
             "return statements that are close together or near the end of the function.  "
             "By close, I mean that each return statement in the compiled code should be "
             "within 256 bytes of another return statement or the end of the function.  "
@@ -578,7 +602,7 @@ class ScopedFunction:
             "\n\nA cute workaround is to add code such as `if bool(): return`."
             "\n\nIf it's important to you that this limitation is fixed, then please submit "
             "an issue (or a pull request!) to:\nhttps://github.com/eriknw/innerscope\n\n"
-            'Another workaround is to use `method="trace"` in ScopedFunction.  This will '
+            f'Another workaround is to use `method="trace"` in {type(self).__name__}.  This will '
             "usually work, but it will be slower and may cause havoc if `sys.settrace` is "
             "used by anything else.  The default method is preferred if possible."
         )
@@ -603,7 +627,7 @@ class ScopedFunction:
         >>> 'cheddar' in haz_cheezburger['cheezburger']
         True
         """
-        return ScopedFunction(
+        return scoped_function(
             self.func,
             self.outer_scope,
             *mappings,
@@ -629,7 +653,7 @@ class ScopedFunction:
             missing = f"\n - missing: {{{missing}}}"
         else:
             missing = ""
-        return f"ScopedFunction\n{func}{inner}{outer}{missing}"
+        return f"{type(self).__name__}\n{func}{inner}{outer}{missing}"
 
     def _repr_html_(self):
         func = self.func
@@ -640,13 +664,23 @@ class ScopedFunction:
         missing = _get_repr_set("missing", self.missing)
         outer = _get_repr_table("outer_scope", self.outer_scope)
         return (
-            "<div><b>ScopedFunction</b><br>\n"
+            f"<div><b>{type(self).__name__}</b><br>\n"
             f"{func}\n"
             f"{inner}\n"
             f"{missing}\n"
             f"{outer}\n"
             "</div>"
         )
+
+    def __get__(self, instance, owner=None):
+        return MethodType(self, instance)
+
+
+class ScopedGeneratorFunction(ScopedFunction):
+    def __call__(self, *args, **kwargs):
+        gen = self._call(args, kwargs)
+        rv = yield from gen
+        return rv
 
 
 def scoped_function(func=None, *mappings, use_closures=True, use_globals=True, method="default"):
@@ -681,7 +715,7 @@ def scoped_function(func=None, *mappings, use_closures=True, use_globals=True, m
     if func is None:
 
         def inner_scoped_func(func):
-            return ScopedFunction(
+            return scoped_function(
                 func,
                 *mappings,
                 use_closures=use_closures,
@@ -700,8 +734,11 @@ def scoped_function(func=None, *mappings, use_closures=True, use_globals=True, m
             use_globals=use_globals,
             method=method,
         )
-
-    return ScopedFunction(
+    if inspect.isgeneratorfunction(func):
+        klass = ScopedGeneratorFunction
+    else:
+        klass = ScopedFunction
+    return klass(
         func,
         *mappings,
         use_closures=use_closures,
@@ -731,7 +768,7 @@ def bindwith(*mappings, **kwargs):
     """
 
     def bindwith_inner(func, *, use_closures=True, use_globals=True):
-        return ScopedFunction(
+        return scoped_function(
             func, *mappings, kwargs, use_closures=use_closures, use_globals=use_globals
         )
 
@@ -778,7 +815,7 @@ def call(*func_and_args, **kwargs):
     if not func_and_args:
         raise TypeError("call() missing 1 required positional argument: 'func'")
     func, *args = func_and_args
-    scoped = ScopedFunction(func)
+    scoped = scoped_function(func)
     return scoped(*args, **kwargs)
 
 
@@ -807,7 +844,7 @@ def callwith(*args, **kwargs):
     """
 
     def callwith_inner(func, *, use_closures=True, use_globals=True):
-        scoped = ScopedFunction(func, use_closures=use_closures, use_globals=use_globals)
+        scoped = scoped_function(func, use_closures=use_closures, use_globals=use_globals)
         return scoped(*args, **kwargs)
 
     return callwith_inner

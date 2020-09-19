@@ -52,7 +52,7 @@ def test_scope_repr_html():
         "<br><tt>- outer_scope: {}</tt><details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>inner_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>\'hi\'</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hi&#x27;</td></td>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
@@ -72,18 +72,18 @@ def test_scope_repr_html():
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>outer_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>\'hello\'</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hello&#x27;</td></td>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>inner_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>y</tt></td><td>\'world\'</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>y</tt></td><td>&#x27;world&#x27;</td></td>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
-        "<tt>- return_value: 'hello world'</tt></div>"
+        "<tt>- return_value: &#x27;hello world&#x27;</tt></div>"
     )
 
     class A:
@@ -134,7 +134,7 @@ def test_scope_reprhtml_return_newlines():
     assert f1._repr_html_() == (
         '<div style="max-width:100%;">\n'
         "<b>Scope</b>\n"
-        "<br><tt>- outer_scope: {}</tt><br><tt>- inner_scope: {}</tt><br><tt>- return_value:<br>'hello<br>world<br>hello<br>world<br>'</tt></div>"
+        "<br><tt>- outer_scope: {}</tt><br><tt>- inner_scope: {}</tt><br><tt>- return_value:<br>&#x27;hello<br>world<br>hello<br>world<br>&#x27;</tt></div>"
     )
 
     @innerscope.call
@@ -147,7 +147,7 @@ def test_scope_reprhtml_return_newlines():
         "<br><tt>- outer_scope: {}</tt><br><tt>- inner_scope: {}</tt><br><details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>return_value</tt>\n"
-        " </summary> <div style=\"padding-left:10px;padding-bottom:5px;\">'hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>'</div>\n"
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">&#x27;hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>hello<br>world<br>&#x27;</div>\n'
         "</details>\n"
         "</div>"
     )
@@ -203,18 +203,18 @@ def test_scoped_function_repr_html():
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>outer_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>\'hello\'</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hello&#x27;</td></td>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>inner_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>y</tt></td><td>\'world\'</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>y</tt></td><td>&#x27;world&#x27;</td></td>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
-        "<tt>- return_value: 'hello world'</tt></div>"
+        "<tt>- return_value: &#x27;hello world&#x27;</tt></div>"
     )
 
 

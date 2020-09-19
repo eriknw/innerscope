@@ -503,3 +503,81 @@ def test_bad_method():
     finally:
         cfg.default_method = old_default
     assert innerscope.call(f) == {"x": 1}
+
+
+def test_generator():
+    def f():
+        foo = 2
+        yield 5
+        yield global_x
+        return 10
+
+    gf = scoped_function(f)
+    [x, y] = gf()
+    assert x == 5
+    assert y == 1
+
+    gen = gf()
+    try:
+        while True:
+            next(gen)
+    except StopIteration as exc:
+        scope = exc.value
+    assert scope == {"foo": 2, "global_x": 1}
+    assert scope.return_value == 10
+
+
+def test_coroutine():
+    async def f():  # pragma: no cover
+        await 5
+
+    with raises(ValueError, match="does not yet work on coroutine functions"):
+        scoped_function(f)
+
+
+def test_asyncgen():
+    async def f():  # pragma: no cover
+        yield 5
+
+    with raises(ValueError, match="does not yet work on async generator functions"):
+        scoped_function(f)
+
+
+def test_classmethod():
+    class A:
+        @scoped_function
+        def f(self):
+            x = 1
+            y = x + 1
+            return y + 1
+
+        @classmethod
+        @scoped_function
+        def g(cls):
+            x = 10
+            y = x + 10
+            return y + 10
+
+        @scoped_function
+        def h(self):
+            x = 100
+            yield x
+            return x + 100
+
+    a = A()
+    scope = a.f()
+    assert scope == {"self": a, "x": 1, "y": 2}
+    assert scope.return_value == 3
+
+    scope = A.g()
+    assert scope == {"cls": A, "x": 10, "y": 20}
+    assert scope.return_value == 30
+
+    gen = a.h()
+    assert next(gen) == 100
+    try:
+        next(gen)
+    except StopIteration as exc:
+        scope = exc.value
+    assert scope == {"self": a, "x": 100}
+    assert scope.return_value == 200
