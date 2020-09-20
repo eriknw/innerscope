@@ -431,7 +431,7 @@ class ScopedFunction:
             self.missing.update(name for name in code.co_freevars if name not in outer_scope)
         self.builtin_names -= self.outer_scope.keys()
 
-        if self._code is None and not self.missing:
+        if self._code is None:
             # Change RETURN_VALUE to JUMP_FORWARD.
             # This way, even long functions can have multiple return statements as long as
             # they are near the end or near each other.  The advantage of this is that we
