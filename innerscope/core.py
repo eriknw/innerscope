@@ -49,6 +49,9 @@ except ImportError:
         )
 
 
+BUILTINS = set(dir(builtins))
+
+
 def _get_globals_recursive(func, *, seen=None, isclass=False):
     """ Get all global names used by func and all functions and classes defined within it."""
     if isclass:
@@ -375,10 +378,19 @@ class ScopedFunction:
             self.func = func.func
             code = func.func.__code__
             outer_scope = merge(func.outer_scope, *mappings)
+            self._code = func._code
+            global_names = func.missing | func.outer_scope.keys()  # includes globals and closures
+            shadowed_globals = func.builtin_names & outer_scope.keys()
+            global_names |= shadowed_globals  # outer_scope may override builtins
+            global_names -= set(code.co_freevars)  # don't include closures in globals
+            self.builtin_names = func.builtin_names - shadowed_globals
         else:
             self.func = func
             code = func.__code__
             outer_scope = merge(mappings)
+            self._code = None
+            global_names = _get_globals_recursive(self.func)
+            self.builtin_names = global_names & BUILTINS
         functools.update_wrapper(self, self.func)
         if inspect.iscoroutinefunction(self.func):
             raise ValueError(
@@ -391,50 +403,6 @@ class ScopedFunction:
                 "I'm curious what exactly you're trying to do.  Please share :)"
             )
 
-        # Change RETURN_VALUE to JUMP_FORWARD.
-        # This way, even long functions can have multiple return statements as long as
-        # they are near the end or near each other.  The advantage of this is that we
-        # don't need to change the code size, which would require handling other jumps.
-        co_code = code.co_code[:-2]  # Remove the RETURN_VALUE that should be at the end
-        return_indices = [
-            inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
-        ]
-        jump_target = len(co_code)
-        target_index = len(return_indices) - 1
-        if len(return_indices) > 1:
-            chunks = []
-            for i in return_indices[-2::-1]:
-                target = jump_target - i - 2
-                while target_index > 0 and target > 255:
-                    target_index -= 1
-                    jump_target = return_indices[target_index]
-                    target = jump_target - i - 2
-                if target_index == 0 or target > 255 or target < 0:
-                    break
-                co_code, chunk = co_code[:i], co_code[i + 2 :]
-                chunks.append(chunk)
-                chunks.append(bytes([dis.opmap["JUMP_FORWARD"], target]))
-            chunks.append(co_code)
-            co_code = b"".join(reversed(chunks))
-
-        # Modify to end with `return (rv, locals(), secret)`
-        co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
-        co_code = co_code + bytes(
-            [
-                dis.opmap["LOAD_GLOBAL"],
-                len(code.co_names),
-                dis.opmap["CALL_FUNCTION"],
-                0,
-                dis.opmap["LOAD_GLOBAL"],
-                len(code.co_names) + 1,
-                dis.opmap["BUILD_TUPLE"],
-                3,
-                dis.opmap["RETURN_VALUE"],
-                0,
-            ]
-        )
-
-        global_names = _get_globals_recursive(self.func)
         # Only keep variables needed by the function (globals and closures)
         outer_scope = {
             key: outer_scope[key]
@@ -458,14 +426,57 @@ class ScopedFunction:
             for name in global_names:
                 if name not in outer_scope and name in func_globals:
                     outer_scope[name] = func_globals[name]
-        self.missing = {
-            name for name in global_names if name not in outer_scope and not hasattr(builtins, name)
-        }
+        self.missing = global_names - outer_scope.keys() - self.builtin_names
         if not use_closures:
             self.missing.update(name for name in code.co_freevars if name not in outer_scope)
-        if self.missing:
-            self._code = None
-        else:
+        self.builtin_names -= self.outer_scope.keys()
+
+        if self._code is None and not self.missing:
+            # Change RETURN_VALUE to JUMP_FORWARD.
+            # This way, even long functions can have multiple return statements as long as
+            # they are near the end or near each other.  The advantage of this is that we
+            # don't need to change the code size, which would require handling other jumps.
+            co_code = code.co_code[:-2]  # Remove the RETURN_VALUE that should be at the end
+            return_indices = [
+                inst.offset
+                for inst in dis.get_instructions(self.func)
+                if inst.opname == "RETURN_VALUE"
+            ]
+            jump_target = len(co_code)
+            target_index = len(return_indices) - 1
+            if len(return_indices) > 1:
+                chunks = []
+                for i in return_indices[-2::-1]:
+                    target = jump_target - i - 2
+                    while target_index > 0 and target > 255:
+                        target_index -= 1
+                        jump_target = return_indices[target_index]
+                        target = jump_target - i - 2
+                    if target_index == 0 or target > 255 or target < 0:
+                        break
+                    co_code, chunk = co_code[:i], co_code[i + 2 :]
+                    chunks.append(chunk)
+                    chunks.append(bytes([dis.opmap["JUMP_FORWARD"], target]))
+                chunks.append(co_code)
+                co_code = b"".join(reversed(chunks))
+
+            # Modify to end with `return (rv, locals(), secret)`
+            co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
+            co_code = co_code + bytes(
+                [
+                    dis.opmap["LOAD_GLOBAL"],
+                    len(code.co_names),
+                    dis.opmap["CALL_FUNCTION"],
+                    0,
+                    dis.opmap["LOAD_GLOBAL"],
+                    len(code.co_names) + 1,
+                    dis.opmap["BUILD_TUPLE"],
+                    3,
+                    dis.opmap["RETURN_VALUE"],
+                    0,
+                ]
+            )
+
             # stacksize must be at least 3, because we make a length three tuple
             self._code = code_replace(
                 code,
