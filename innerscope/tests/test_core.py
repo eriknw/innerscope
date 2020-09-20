@@ -5,6 +5,7 @@ from pytest import raises
 from innerscope import scoped_function, cfg
 
 global_x = 1
+hex = 1  # shadow a builtin
 
 
 def test_no_args():
@@ -503,3 +504,140 @@ def test_bad_method():
     finally:
         cfg.default_method = old_default
     assert innerscope.call(f) == {"x": 1}
+
+
+def test_generator():
+    def f():
+        foo = 2
+        yield 5
+        yield global_x
+        return 10
+
+    gf = scoped_function(f)
+    [x, y] = gf()
+    assert x == 5
+    assert y == 1
+
+    gen = gf()
+    try:
+        while True:
+            next(gen)
+    except StopIteration as exc:
+        scope = exc.value
+    assert scope == {"foo": 2, "global_x": 1}
+    assert scope.return_value == 10
+
+
+def test_coroutine():
+    async def f():  # pragma: no cover
+        await 5
+
+    with raises(ValueError, match="does not yet work on coroutine functions"):
+        scoped_function(f)
+
+
+def test_asyncgen():
+    async def f():  # pragma: no cover
+        yield 5
+
+    with raises(ValueError, match="does not yet work on async generator functions"):
+        scoped_function(f)
+
+
+def test_classmethod():
+    class A:
+        @scoped_function
+        def f(self):
+            x = 1
+            y = x + 1
+            return y + 1
+
+        @classmethod
+        @scoped_function
+        def g(cls):
+            x = 10
+            y = x + 10
+            return y + 10
+
+        @scoped_function
+        def h(self):
+            x = 100
+            yield x
+            return x + 100
+
+    a = A()
+    scope = a.f()
+    assert scope == {"self": a, "x": 1, "y": 2}
+    assert scope.return_value == 3
+
+    scope = A.g()
+    assert scope == {"cls": A, "x": 10, "y": 20}
+    assert scope.return_value == 30
+
+    gen = a.h()
+    assert next(gen) == 100
+    try:
+        next(gen)
+    except StopIteration as exc:
+        scope = exc.value
+    assert scope == {"self": a, "x": 100}
+    assert scope.return_value == 200
+
+
+def test_shadow_builtins():
+    min = 1
+
+    def f(sum):
+        dict = min + sum + max
+        return dict + 1
+
+    sf = scoped_function(f)
+    # 1/0
+    assert sf.missing == set()
+    assert sf.outer_scope == {"min": 1}
+    assert sf.builtin_names == {"max"}
+
+    sf = scoped_function(f, {"max": 100, "bool": 999})
+
+    assert sf.missing == set()
+    assert sf.outer_scope == {"min": 1, "max": 100}
+    assert sf.builtin_names == set()
+    scope = sf(10)
+    assert scope == {"min": 1, "sum": 10, "max": 100, "dict": 111}
+    assert scope.return_value == 112
+
+    sf = scoped_function(f, use_closures=False)
+    assert sf.missing == {"min"}
+    assert sf.outer_scope == {}
+    assert sf.builtin_names == {"max"}
+
+    sf = scoped_function(f, {"min": 1000, "max": 100, "bool": 999}, use_closures=False)
+    assert sf.missing == set()
+    assert sf.outer_scope == {"min": 1000, "max": 100}
+    assert sf.builtin_names == set()
+    scope = sf(10)
+    assert scope == {"min": 1000, "sum": 10, "max": 100, "dict": 1110}
+    assert scope.return_value == 1111
+
+    def g():
+        a = hex + 1
+
+    sg = scoped_function(g)
+    assert sg.inner_names == {"a"}
+    assert sg.outer_scope == {"hex": 1}
+    assert sg.builtin_names == set()
+    assert sg.missing == set()
+    assert sg() == {"a": 2, "hex": 1}
+
+    sg = scoped_function(g, use_globals=False)
+    assert sg.inner_names == {"a"}
+    assert sg.outer_scope == {}
+    assert sg.missing == set()
+    assert sg.builtin_names == {"hex"}
+
+    sg = sg.bind(hex=100)
+    assert sg.inner_names == {"a"}
+    assert sg.outer_scope == {"hex": 100}
+    assert sg.builtin_names == set()
+    assert sg.missing == set()
+    assert sg() == {"a": 101, "hex": 100}
