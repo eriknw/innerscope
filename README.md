@@ -9,6 +9,8 @@
 
 `innerscope` exposes the inner scope of functions and offers primitives suitable for creating pipelines.  It explores a design space around functions, dictionaries, and classes.
 
+**To install:** `pip install innerscope`
+
 A function can be made to act like a dictionary:
 ```python
 @innerscope.call
@@ -117,12 +119,12 @@ set()
 True
 ```
 ## How?
-This library required surprisingly little magic at first.  Perhaps I'll explain it some day.  I mean, it does modify the bytecode, so it's a little magical and sinful, but it does so in a very reliable way, so you should feel comfortable using this library.
+This library *does not* use `exec`, `eval`, the AST, or source code.  It runs on [CPython](https://www.python.org/), [PyPy](https://www.pypy.org/), and [Stackless Python](https://github.com/stackless-dev/stackless/wiki).  You should feel comfortable using `innerscope`.  It actually offers *two* methods for obtaining the inner scope, and both are very reliable.  Of course we're doing *something* magical under the hood, and I would love to explain how some day.
 
 ## Why?
 It's all [@mrocklin's](https://github.com/mrocklin) fault for [asking a question.](https://github.com/dask/distributed/issues/4003)
 `innerscope` is exploring a data model that could be convenient for running code remotely with [dask.](https://dask.org)
-I bet it would even be useful for building pipelines with dask.
+I bet it would even be useful for building pipelines with dask.  I'm sure there are other creative uses for it just waiting to be discovered.
 
 #### *This library is totally awesome and you should use it and tell all your friends* 😉 *!*
 
