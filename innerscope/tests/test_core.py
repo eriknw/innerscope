@@ -592,7 +592,6 @@ def test_shadow_builtins():
         return dict + 1
 
     sf = scoped_function(f)
-    # 1/0
     assert sf.missing == set()
     assert sf.outer_scope == {"min": 1}
     assert sf.builtin_names == {"max"}
@@ -641,3 +640,24 @@ def test_shadow_builtins():
     assert sg.builtin_names == set()
     assert sg.missing == set()
     assert sg() == {"a": 101, "hex": 100}
+
+
+def test_from_scopedgenerator():
+    def gen():
+        x = 1
+
+    sgen = scoped_function(gen)
+    sgen2 = scoped_function(sgen)
+    assert sgen() == {"x": 1}
+    assert sgen2() == {"x": 1}
+
+
+def test_bad_type():
+    def f(x):
+        y = x + 1
+        return y + 1
+
+    cf = classmethod(f)
+    with raises(TypeError, match="expects a Python function"):
+        scoped_function(cf)
+    assert innerscope.call(f, 1) == {"x": 1, "y": 2}

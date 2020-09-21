@@ -745,10 +745,12 @@ def scoped_function(func=None, *mappings, use_closures=True, use_globals=True, m
             use_globals=use_globals,
             method=method,
         )
-    if inspect.isgeneratorfunction(func):
+    if type(func) is ScopedGeneratorFunction or inspect.isgeneratorfunction(func):
         klass = ScopedGeneratorFunction
-    else:
+    elif type(func) is ScopedFunction or inspect.isfunction(func):
         klass = ScopedFunction
+    else:
+        raise TypeError(f"scoped_function expects a Python function.  Got type: {type(func)}")
     return klass(
         func,
         *mappings,
