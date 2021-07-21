@@ -4,6 +4,7 @@ import functools
 import html
 import inspect
 import sys
+import warnings
 from collections.abc import Mapping
 from types import CodeType, FunctionType, MethodType
 from tlz import concatv, merge
@@ -53,7 +54,7 @@ BUILTINS = set(dir(builtins))
 
 
 def _get_globals_recursive(func, *, seen=None, isclass=False):
-    """ Get all global names used by func and all functions and classes defined within it."""
+    """Get all global names used by func and all functions and classes defined within it."""
     if isclass:
         global_names = set()
         local_names = {"__name__"}
@@ -432,58 +433,60 @@ class ScopedFunction:
         self.builtin_names -= self.outer_scope.keys()
 
         if self._code is None:
-            # Change RETURN_VALUE to JUMP_FORWARD.
-            # This way, even long functions can have multiple return statements as long as
-            # they are near the end or near each other.  The advantage of this is that we
-            # don't need to change the code size, which would require handling other jumps.
-            co_code = code.co_code[:-2]  # Remove the RETURN_VALUE that should be at the end
-            return_indices = [
-                inst.offset
-                for inst in dis.get_instructions(self.func)
-                if inst.opname == "RETURN_VALUE"
-            ]
-            jump_target = len(co_code)
-            target_index = len(return_indices) - 1
-            if len(return_indices) > 1:
-                chunks = []
-                for i in return_indices[-2::-1]:
+            self._create_code()
+
+    def _create_code(self):
+        # Change RETURN_VALUE to JUMP_FORWARD.
+        # This way, even long functions can have multiple return statements as long as
+        # they are near the end or near each other.  The advantage of this is that we
+        # don't need to change the code size, which would require handling other jumps.
+        code = self.func.__code__
+        co_code = code.co_code[:-2]  # Remove the RETURN_VALUE that should be at the end
+        return_indices = [
+            inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
+        ]
+        jump_target = len(co_code)
+        target_index = len(return_indices) - 1
+        if len(return_indices) > 1:
+            chunks = []
+            for i in return_indices[-2::-1]:
+                target = jump_target - i - 2
+                while target_index > 0 and target > 255:
+                    target_index -= 1
+                    jump_target = return_indices[target_index]
                     target = jump_target - i - 2
-                    while target_index > 0 and target > 255:
-                        target_index -= 1
-                        jump_target = return_indices[target_index]
-                        target = jump_target - i - 2
-                    if target_index == 0 or target > 255 or target < 0:
-                        break
-                    co_code, chunk = co_code[:i], co_code[i + 2 :]
-                    chunks.append(chunk)
-                    chunks.append(bytes([dis.opmap["JUMP_FORWARD"], target]))
-                chunks.append(co_code)
-                co_code = b"".join(reversed(chunks))
+                if target_index == 0 or target > 255 or target < 0:
+                    break
+                co_code, chunk = co_code[:i], co_code[i + 2 :]
+                chunks.append(chunk)
+                chunks.append(bytes([dis.opmap["JUMP_FORWARD"], target]))
+            chunks.append(co_code)
+            co_code = b"".join(reversed(chunks))
 
-            # Modify to end with `return (rv, locals(), secret)`
-            co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
-            co_code = co_code + bytes(
-                [
-                    dis.opmap["LOAD_GLOBAL"],
-                    len(code.co_names),
-                    dis.opmap["CALL_FUNCTION"],
-                    0,
-                    dis.opmap["LOAD_GLOBAL"],
-                    len(code.co_names) + 1,
-                    dis.opmap["BUILD_TUPLE"],
-                    3,
-                    dis.opmap["RETURN_VALUE"],
-                    0,
-                ]
-            )
+        # Modify to end with `return (rv, locals(), secret)`
+        co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
+        co_code = co_code + bytes(
+            [
+                dis.opmap["LOAD_GLOBAL"],
+                len(code.co_names),
+                dis.opmap["CALL_FUNCTION"],
+                0,
+                dis.opmap["LOAD_GLOBAL"],
+                len(code.co_names) + 1,
+                dis.opmap["BUILD_TUPLE"],
+                3,
+                dis.opmap["RETURN_VALUE"],
+                0,
+            ]
+        )
 
-            # stacksize must be at least 3, because we make a length three tuple
-            self._code = code_replace(
-                code,
-                co_code=co_code,
-                co_names=co_names,
-                co_stacksize=max(code.co_stacksize, 3),
-            )
+        # stacksize must be at least 3, because we make a length three tuple
+        self._code = code_replace(
+            code,
+            co_code=co_code,
+            co_names=co_names,
+            co_stacksize=max(code.co_stacksize, 3),
+        )
 
     def __call__(self, *args, **kwargs):
         [scope] = self._call(args, kwargs)
@@ -491,9 +494,9 @@ class ScopedFunction:
 
     def _call(self, args, kwargs):
         if self.missing:
-            raise NameError(
+            warnings.warn(
                 f"Undefined variables: {', '.join(repr(name) for name in self.missing)}.\n"
-                "Use `bind` method to assign values for these names before calling."
+                "Perhaps use `bind` method to assign values for these names before calling."
             )
         # Should we use builtins, builtins.__dict__, or self.func.__globals__['__builtins__']?
         outer_scope = self.outer_scope.copy()
@@ -685,6 +688,15 @@ class ScopedFunction:
 
     def __get__(self, instance, owner=None):
         return MethodType(self, instance)
+
+    def __getstate__(self):
+        rv = dict(self.__dict__)
+        rv["_code"] = None
+        return rv
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._create_code()
 
 
 class ScopedGeneratorFunction(ScopedFunction):

@@ -1,7 +1,8 @@
 import pytest
 import builtins
 import innerscope
-from pytest import raises
+import pickle
+from pytest import raises, warns
 from innerscope import scoped_function, cfg
 
 global_x = 1
@@ -35,8 +36,9 @@ def test_no_args():
 
     sf2 = scoped_function(f2)
     assert sf2.missing == {"b"}
-    with raises(NameError, match="Undefined variables: 'b'"):
-        sf2()
+    with warns(UserWarning, match="Undefined variables: 'b'"):
+        with raises(NameError):
+            sf2()
 
     check(sf2.bind(b=2))
     check(sf2.bind({"b": 2}))
@@ -661,3 +663,17 @@ def test_bad_type():
     with raises(TypeError, match="expects a Python function"):
         scoped_function(cf)
     assert innerscope.call(f, 1) == {"x": 1, "y": 2}
+
+
+# Define globally so pickle can find it easily
+def global_func():
+    a = 1
+    b = a + 1
+
+
+def test_pickle():
+    f = scoped_function(global_func)
+    assert f() == dict(a=1, b=2)
+    s = pickle.dumps(f)
+    f2 = pickle.loads(s)
+    assert f2() == dict(a=1, b=2)
