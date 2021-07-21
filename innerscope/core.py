@@ -529,8 +529,6 @@ class ScopedFunction:
                 return trace_returns
 
         else:
-            if self._code is None:
-                self._create_code()
             code = self._code
 
         func = FunctionType(
@@ -695,6 +693,10 @@ class ScopedFunction:
         rv = dict(self.__dict__)
         rv["_code"] = None
         return rv
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._create_code()
 
 
 class ScopedGeneratorFunction(ScopedFunction):
