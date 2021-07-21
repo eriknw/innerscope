@@ -108,8 +108,8 @@ True
 >>> paranoid_g()
 ```
 ```diff
-- NameError: Undefined variables: 'global_x', 'closure_y'.
-- Use `bind` method to assign values for these names before calling.
+- UserWarning: Undefined variables: 'global_x', 'closure_y'.
+- Perhaps use `bind` method to assign values for these names before calling.
 ```
 ```python
 >>> new_g = paranoid_g.bind({'global_x': 100, 'closure_y': 200})
