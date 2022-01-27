@@ -7,7 +7,9 @@ import sys
 import warnings
 from collections.abc import Mapping
 from types import CodeType, FunctionType, MethodType
+
 from tlz import concatv, merge
+
 from . import cfg
 
 try:
@@ -20,7 +22,6 @@ try:
             co_names=co_names,
             co_stacksize=co_stacksize,
         )
-
 
 except ImportError:
 
