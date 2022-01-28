@@ -7,7 +7,9 @@ import sys
 import warnings
 from collections.abc import Mapping
 from types import CodeType, FunctionType, MethodType
+
 from tlz import concatv, merge
+
 from . import cfg
 
 try:
@@ -20,7 +22,6 @@ try:
             co_names=co_names,
             co_stacksize=co_stacksize,
         )
-
 
 except ImportError:
 
@@ -441,7 +442,13 @@ class ScopedFunction:
         # they are near the end or near each other.  The advantage of this is that we
         # don't need to change the code size, which would require handling other jumps.
         code = self.func.__code__
-        co_code = code.co_code[:-2]  # Remove the RETURN_VALUE that should be at the end
+        if code.co_code[-2] == dis.opmap["RETURN_VALUE"]:
+            # Remove the RETURN_VALUE that should be at the end
+            co_code = code.co_code[:-2]
+        else:
+            # Ending without a return, but let's add a value for us to return just in case
+            # assert code.co_code[-2] == dis.opmap["RAISE_VARARGS"]
+            co_code = code.co_code + bytes([dis.opmap["LOAD_CONST"], 0])
         return_indices = [
             inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
         ]
@@ -459,6 +466,8 @@ class ScopedFunction:
                     break
                 co_code, chunk = co_code[:i], co_code[i + 2 :]
                 chunks.append(chunk)
+                if sys.version_info.minor >= 10:
+                    target //= 2  # :crossed_fingers:
                 chunks.append(bytes([dis.opmap["JUMP_FORWARD"], target]))
             chunks.append(co_code)
             co_code = b"".join(reversed(chunks))

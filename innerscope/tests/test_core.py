@@ -1,9 +1,11 @@
-import pytest
 import builtins
-import innerscope
 import pickle
+
+import pytest
 from pytest import raises, warns
-from innerscope import scoped_function, cfg
+
+import innerscope
+from innerscope import cfg, scoped_function
 
 global_x = 1
 hex = 1  # shadow a builtin

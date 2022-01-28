@@ -1,6 +1,6 @@
-import versioneer
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
+import versioneer
 
 with open("README.md") as f:
     long_description = f.read()
@@ -16,8 +16,7 @@ setup(
     url="https://github.com/eriknw/innerscope",
     packages=find_packages(),
     license="BSD",
-    python_requires=">=3.6",
-    setup_requires=[],
+    python_requires=">=3.7",
     install_requires=["toolz"],
     tests_require=["pytest"],
     include_package_data=True,
@@ -27,9 +26,10 @@ setup(
         "Operating System :: OS Independent",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3 :: Only",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python :: Implementation :: PyPy",
