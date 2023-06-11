@@ -395,7 +395,9 @@ def test_inner_and_outer_variable():
         x = x + 1  # pragma: no cover
 
     with raises(
-        UnboundLocalError, match="local variable 'x' referenced before assignment.\n\nThis probably"
+        UnboundLocalError,
+        match="local variable 'x' referenced before assignment.\n\nThis probably"
+        "|cannot access local variable 'x' where it is not associated with a value.\n\nThis probably",
     ):
         f2()
 
