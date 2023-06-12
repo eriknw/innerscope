@@ -6,50 +6,11 @@ import inspect
 import sys
 import warnings
 from collections.abc import Mapping
-from types import CodeType, FunctionType, MethodType
+from types import CellType, CodeType, FunctionType, MethodType
 
 from tlz import concatv, merge
 
 from . import cfg
-
-try:
-    # Added in Python 3.8
-    from types import CellType
-
-    def code_replace(code, *, co_code, co_names, co_stacksize):
-        return code.replace(
-            co_code=co_code,
-            co_names=co_names,
-            co_stacksize=co_stacksize,
-        )
-
-except ImportError:
-
-    def CellType(x):
-        def inner():  # pragma: no cover
-            return x
-
-        return inner.__closure__[0]
-
-    def code_replace(code, *, co_code, co_names, co_stacksize):
-        return CodeType(
-            code.co_argcount,
-            code.co_kwonlyargcount,
-            code.co_nlocals,
-            co_stacksize,
-            code.co_flags,
-            co_code,
-            code.co_consts,
-            co_names,
-            code.co_varnames,
-            code.co_filename,
-            code.co_name,
-            code.co_firstlineno,
-            code.co_lnotab,
-            code.co_freevars,
-            code.co_cellvars,
-        )
-
 
 if sys.version_info < (3, 11):
     NEW_CODE = (
@@ -550,8 +511,7 @@ class ScopedFunction:
         co_code = co_code + new_code
 
         # stacksize must be at least 3, because we make a length three tuple
-        self._code = code_replace(
-            code,
+        self._code = code.replace(
             co_code=co_code,
             co_names=co_names,
             co_stacksize=max(code.co_stacksize, 3),
