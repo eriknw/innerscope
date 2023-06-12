@@ -1,17 +1,19 @@
 # Innerscope
 
-[![Python Version](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%20PyPy-blue)](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%20PyPy-blue)
-[![Version](https://img.shields.io/pypi/v/innerscope.svg)](https://pypi.org/project/innerscope/)
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/innerscope.svg)](https://anaconda.org/conda-forge/innerscope)
+[![pypi](https://img.shields.io/pypi/v/innerscope.svg)](https://pypi.python.org/pypi/innerscope/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/innerscope)](https://pypi.python.org/pypi/innerscope/)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/master/LICENSE)
-[![Build Status](https://github.com/eriknw/innerscope/workflows/Test/badge.svg)](https://github.com/eriknw/innerscope/actions)
-[![Coverage Status](https://coveralls.io/repos/eriknw/innerscope/badge.svg?branch=master)](https://coveralls.io/r/eriknw/innerscope)
+[![Tests](https://github.com/eriknw/innerscope/workflows/Test/badge.svg?branch=main)](https://github.com/eriknw/innerscope/actions)
+[![Coverage](https://coveralls.io/repos/eriknw/innerscope/badge.svg?branch=main)](https://coveralls.io/r/eriknw/innerscope)
 
 `innerscope` exposes the inner scope of functions and offers primitives suitable for creating pipelines.  It explores a design space around functions, dictionaries, and classes.
 
 **To install with pip:**
-- `pip install innerscope`
+`pip install innerscope`
+
 **To install with conda:**
-- `conda install -c conda-forge innerscope`
+`conda install -c conda-forge innerscope`
 
 A function can be made to act like a dictionary:
 ```python
@@ -129,4 +131,3 @@ It's all [@mrocklin's](https://github.com/mrocklin) fault for [asking a question
 I bet it would even be useful for building pipelines with dask.  I'm sure there are other creative uses for it just waiting to be discovered. **Update:** and [`afar`](https://github.com/eriknw/afar) has been born!
 
 #### *This library is totally awesome and you should use it and tell all your friends* 😉 *!*
-
