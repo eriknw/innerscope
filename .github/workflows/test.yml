@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -l {0}
     strategy:
       fail-fast: false
       matrix:
@@ -24,20 +27,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --upgrade pip
           pip install toolz pytest coverage
-          pip install -e .
+          pip install -e . --no-deps
       - name: PyTest
         run: |
           coverage run --branch -m pytest --doctest-modules --method bytecode
           coverage run -a --branch -m pytest --doctest-modules --method trace
           pytest --doctest-modules --method trace
-      - name: Style checks
-        if: (! contains(matrix.python-version, 'pypy'))
-        run: |
-          pip install black flake8
-          flake8 .
-          black innerscope *.py --check --diff
       - name: Coverage
         if: (! contains(matrix.python-version, 'pypy'))
         env:
@@ -51,10 +48,11 @@ jobs:
 
   finish:
     needs: test
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Coveralls Finished
-        uses: coverallsapp/github-action@master
+        uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.github_token }}
           parallel-finished: true

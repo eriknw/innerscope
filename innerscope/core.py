@@ -51,7 +51,7 @@ except ImportError:
         )
 
 
-if sys.version_info.minor < 11:
+if sys.version_info < (3, 11):
     NEW_CODE = (
         bytes([dis.opmap["LOAD_GLOBAL"]])
         + b"%b"
@@ -532,15 +532,15 @@ class ScopedFunction:
                     break
                 co_code, chunk = co_code[:i], co_code[i + 2 :]
                 chunks.append(chunk)
-                if sys.version_info.minor >= 10:
+                if sys.version_info >= (3, 10):
                     target //= 2  # :crossed_fingers:
                 chunks.append(bytes([dis.opmap["JUMP_FORWARD"], target]))
             chunks.append(co_code)
             co_code = b"".join(reversed(chunks))
 
         # Modify to end with `return (rv, locals(), secret)`
-        co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
-        if sys.version_info.minor < 11:
+        co_names = (*code.co_names, "_innerscope_locals_", "_innerscope_secret_")
+        if sys.version_info < (3, 11):
             new_code = NEW_CODE % (bytes([len(code.co_names)]), bytes([len(code.co_names) + 1]))
         else:
             new_code = NEW_CODE % (
@@ -565,7 +565,8 @@ class ScopedFunction:
         if self.missing:
             warnings.warn(
                 f"Undefined variables: {', '.join(repr(name) for name in self.missing)}.\n"
-                "Perhaps use `bind` method to assign values for these names before calling."
+                "Perhaps use `bind` method to assign values for these names before calling.",
+                stacklevel=2,
             )
         # Should we use builtins, builtins.__dict__, or self.func.__globals__['__builtins__']?
         outer_scope = self.outer_scope.copy()

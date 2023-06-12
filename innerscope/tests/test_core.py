@@ -1,14 +1,16 @@
-import builtins
 import pickle
 
 import pytest
-from pytest import raises, warns
 
 import innerscope
 from innerscope import cfg, scoped_function
 
 global_x = 1
 hex = 1  # shadow a builtin
+
+
+def test_version():
+    assert innerscope.__version__ >= "0.5"
 
 
 def test_no_args():
@@ -38,9 +40,8 @@ def test_no_args():
 
     sf2 = scoped_function(f2)
     assert sf2.missing == {"b"}
-    with warns(UserWarning, match="Undefined variables: 'b'"):
-        with raises(NameError):
-            sf2()
+    with pytest.warns(UserWarning, match="Undefined variables: 'b'"), pytest.raises(NameError):
+        sf2()
 
     check(sf2.bind(b=2))
     check(sf2.bind({"b": 2}))
@@ -72,9 +73,9 @@ def test_no_args_call():
     check(scope1.call(f2))
     check(scope1.callwith()(f2))
 
-    with raises(TypeError, match="missing 1 required positional"):
+    with pytest.raises(TypeError, match="missing 1 required positional"):
         scope1.call()
-    with raises(TypeError, match="missing 1 required positional"):
+    with pytest.raises(TypeError, match="missing 1 required positional"):
         innerscope.call()
 
 
@@ -224,7 +225,7 @@ def test_raises_error():
     def f():
         1 / 0
 
-    with raises(ZeroDivisionError):
+    with pytest.raises(ZeroDivisionError):
         f()
 
 
@@ -262,7 +263,7 @@ def test_early_return():
         b = a + 1
 
     # But we can check the return type
-    # with raises(ValueError, match="must return at the very end of the function"):
+    # with pytest.raises(ValueError, match="must return at the very end of the function"):
     #     f(True)
     scope = f(True)
     assert scope == {"boolean": True}
@@ -278,7 +279,7 @@ def test_early_return():
         a = 1
         b = a + 1
 
-    # with raises(ValueError, match="must return at the very end of the function"):
+    # with pytest.raises(ValueError, match="must return at the very end of the function"):
     #     g(True)
     scope = g(True)
     assert scope == {"boolean": True}
@@ -303,16 +304,16 @@ def test_difficult_return():
         y = x
         return 2
 
-    if cfg.default_method == 'bytecode':
-        with raises(ValueError, match="The first return statement is too far away"):
+    if cfg.default_method == "bytecode":
+        with pytest.raises(ValueError, match="The first return statement is too far away"):
             f1(True)
-    if cfg.default_method == 'trace':
+    if cfg.default_method == "trace":
         scope = f1(True)
-        assert scope == {'x': 1, 'arg': True}
+        assert scope == {"x": 1, "arg": True}
         assert scope.return_value == 1
 
     scope = f1(False)
-    assert scope == {'arg': False,  'y': 1, 'x': 1}
+    assert scope == {"arg": False,  "y": 1, "x": 1}
     assert scope.return_value == 2
 
     @scoped_function
@@ -331,14 +332,14 @@ def test_difficult_return():
         return 3
 
     scope = f2(0)
-    assert scope == {'arg': 0, 'x': 1}
+    assert scope == {"arg": 0, "x": 1}
     assert scope.return_value == 1
 
     scope = f2(1)
-    assert scope == {'arg': 1, 'x': 1}
+    assert scope == {"arg": 1, "x": 1}
     assert scope.return_value == 2
     scope = f2(2)
-    assert scope == {'arg': 2, 'x': 1, 'y': 1}
+    assert scope == {"arg": 2, "x": 1, "y": 1}
     assert scope.return_value == 3
 
     @scoped_function
@@ -360,23 +361,23 @@ def test_difficult_return():
         y = x
         return 4
 
-    if cfg.default_method == 'bytecode':
-        with raises(ValueError, match="The first 2 return statements are too far away"):
+    if cfg.default_method == "bytecode":
+        with pytest.raises(ValueError, match="The first 2 return statements are too far away"):
             f3(0)
-        with raises(ValueError, match="The first 2 return statements are too far away"):
+        with pytest.raises(ValueError, match="The first 2 return statements are too far away"):
             f3(1)
-    if cfg.default_method == 'trace':
+    if cfg.default_method == "trace":
         scope = f3(0)
-        assert scope == {'arg': 0, 'x': 1}
+        assert scope == {"arg": 0, "x": 1}
         assert scope.return_value == 1
         scope = f3(1)
-        assert scope == {'arg': 1, 'x': 1}
+        assert scope == {"arg": 1, "x": 1}
         assert scope.return_value == (1, 2, 3)
     scope = f3(2)
-    assert scope == {'arg': 2, 'x': 1}
+    assert scope == {"arg": 2, "x": 1}
     assert scope.return_value == 3
     scope = f3(3)
-    assert scope == {'arg': 3, 'x': 1, 'y': 1}
+    assert scope == {"arg": 3, "x": 1, "y": 1}
     assert scope.return_value == 4
     # fmt: on
 
@@ -394,10 +395,11 @@ def test_inner_and_outer_variable():
     def f2():
         x = x + 1  # pragma: no cover
 
-    with raises(
+    with pytest.raises(
         UnboundLocalError,
         match="local variable 'x' referenced before assignment.\n\nThis probably"
-        "|cannot access local variable 'x' where it is not associated with a value.\n\nThis probably",
+        "|cannot access local variable 'x' where it is not associated with a value."
+        "\n\nThis probably",
     ):
         f2()
 
@@ -405,7 +407,7 @@ def test_inner_and_outer_variable():
     def f3():
         raise UnboundLocalError("hahaha")
 
-    with raises(UnboundLocalError, match="hahaha$"):
+    with pytest.raises(UnboundLocalError, match="hahaha$"):
         f3()
 
 
@@ -497,15 +499,15 @@ def test_bad_method():
     def f():
         x = 1
 
-    with raises(ValueError, match="method= argument to ScopedFunc"):
+    with pytest.raises(ValueError, match="method= argument to ScopedFunc"):
         scoped_function(f, method="bad_method")
     old_default = cfg.default_method
     try:
         cfg.default_method = "bad_method"
-        with raises(ValueError, match="method= argument to ScopedFunc"):
+        with pytest.raises(ValueError, match="method= argument to ScopedFunc"):
             scoped_function(f)
         cfg.default_method = "default"
-        with raises(ValueError, match="silly"):
+        with pytest.raises(ValueError, match="silly"):
             scoped_function(f)
     finally:
         cfg.default_method = old_default
@@ -538,7 +540,7 @@ def test_coroutine():
     async def f():  # pragma: no cover
         await 5
 
-    with raises(ValueError, match="does not yet work on coroutine functions"):
+    with pytest.raises(ValueError, match="does not yet work on coroutine functions"):
         scoped_function(f)
 
 
@@ -546,7 +548,7 @@ def test_asyncgen():
     async def f():  # pragma: no cover
         yield 5
 
-    with raises(ValueError, match="does not yet work on async generator functions"):
+    with pytest.raises(ValueError, match="does not yet work on async generator functions"):
         scoped_function(f)
 
 
@@ -664,7 +666,7 @@ def test_bad_type():
         return y + 1
 
     cf = classmethod(f)
-    with raises(TypeError, match="expects a Python function"):
+    with pytest.raises(TypeError, match="expects a Python function"):
         scoped_function(cf)
     assert innerscope.call(f, 1) == {"x": 1, "y": 2}
 
