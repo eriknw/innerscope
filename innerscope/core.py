@@ -51,6 +51,67 @@ except ImportError:
         )
 
 
+if sys.version_info.minor < 11:
+    NEW_CODE = (
+        bytes([dis.opmap["LOAD_GLOBAL"]])
+        + b"%b"
+        + bytes([dis.opmap["CALL_FUNCTION"], 0, dis.opmap["LOAD_GLOBAL"]])
+        + b"%b"
+        + bytes([dis.opmap["BUILD_TUPLE"], 3, dis.opmap["RETURN_VALUE"], 0])
+    )
+else:
+    NEW_CODE = (
+        bytes([dis.opmap["LOAD_GLOBAL"]])
+        + b"%b"
+        + bytes(
+            [
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["PRECALL"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CALL"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["LOAD_GLOBAL"],
+            ]
+        )
+        + b"%b"
+        + bytes(
+            [
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["CACHE"],
+                0,
+                dis.opmap["BUILD_TUPLE"],
+                3,
+                dis.opmap["RETURN_VALUE"],
+                0,
+            ]
+        )
+    )
 BUILTINS = set(dir(builtins))
 
 
@@ -77,7 +138,12 @@ def _get_globals_recursive(func, *, seen=None, isclass=False):
     for inst in dis.get_instructions(func):
         if inst.opname == "LOAD_CONST" and type(inst.argval) is CodeType:
             if num_classes > 0:
-                code_inst = next(dis.get_instructions(inst.argval))
+                it = dis.get_instructions(inst.argval)
+                code_inst = next(it)
+                if code_inst.opname == "COPY_FREE_VARS":
+                    code_inst = next(it)
+                if code_inst.opname == "RESUME":
+                    code_inst = next(it)
                 isclass = code_inst.opname == "LOAD_NAME" and code_inst.argval == "__name__"
                 num_classes -= isclass
             if inst.argval in seen:  # pragma: no cover
@@ -474,20 +540,14 @@ class ScopedFunction:
 
         # Modify to end with `return (rv, locals(), secret)`
         co_names = code.co_names + ("_innerscope_locals_", "_innerscope_secret_")
-        co_code = co_code + bytes(
-            [
-                dis.opmap["LOAD_GLOBAL"],
-                len(code.co_names),
-                dis.opmap["CALL_FUNCTION"],
-                0,
-                dis.opmap["LOAD_GLOBAL"],
-                len(code.co_names) + 1,
-                dis.opmap["BUILD_TUPLE"],
-                3,
-                dis.opmap["RETURN_VALUE"],
-                0,
-            ]
-        )
+        if sys.version_info.minor < 11:
+            new_code = NEW_CODE % (bytes([len(code.co_names)]), bytes([len(code.co_names) + 1]))
+        else:
+            new_code = NEW_CODE % (
+                bytes([2 * len(code.co_names) + 1]),
+                bytes([2 * len(code.co_names) + 2]),
+            )
+        co_code = co_code + new_code
 
         # stacksize must be at least 3, because we make a length three tuple
         self._code = code_replace(
@@ -552,12 +612,20 @@ class ScopedFunction:
                 return_value = yield from return_value
         except UnboundLocalError as exc:
             message = exc.args and exc.args[0] or ""
-            if (
-                isinstance(message, str)
-                and message.startswith("local variable ")
+            if isinstance(message, str) and (
+                message.startswith("local variable ")
                 and message.endswith(" referenced before assignment")
+                or message.startswith("cannot access local variable")
+                and message.endswith("where it is not associated with a value")
             ):
-                name = message[len("local variable ") : -len(" referenced before assignment")]
+                if message.startswith("local variable "):
+                    name = message[len("local variable ") : -len(" referenced before assignment")]
+                else:
+                    name = message[
+                        len("cannot access local variable ") : -len(
+                            "where it is not associated with a value"
+                        )
+                    ]
                 raise UnboundLocalError(
                     f"{message}.\n\n"
                     "This probably means you assigned to a local variable with the same name as a "
