@@ -4,8 +4,8 @@
 [![pypi](https://img.shields.io/pypi/v/innerscope.svg)](https://pypi.python.org/pypi/innerscope/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/innerscope)](https://pypi.python.org/pypi/innerscope/)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/master/LICENSE)
-[![Tests](https://github.com/eriknw/innerscope/workflows/Test/badge.svg?branch=main)](https://github.com/eriknw/innerscope/actions)
-[![Coverage](https://coveralls.io/repos/eriknw/innerscope/badge.svg?branch=main)](https://coveralls.io/r/eriknw/innerscope)
+[![Tests](https://github.com/eriknw/innerscope/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/eriknw/innerscope/actions)
+[![Coverage](https://codecov.io/gh/eriknw/innerscope/graph/badge.svg?token=7WW2DKBYSS)](https://codecov.io/gh/eriknw/innerscope)
 
 `innerscope` exposes the inner scope of functions and offers primitives suitable for creating pipelines.  It explores a design space around functions, dictionaries, and classes.
 
