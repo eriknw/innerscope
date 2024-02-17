@@ -43,3 +43,5 @@ jobs:
           coverage report --show-missing
       - name: codecov
         uses: codecov/codecov-action@v4
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
