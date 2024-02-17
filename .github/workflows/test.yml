@@ -8,18 +8,21 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -l {0}
     strategy:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest", "macos-latest", "windows-latest"]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "pypy-3.8", "pypy-3.9"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "pypy-3.8", "pypy-3.9", "pypy-3.10"]
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
@@ -29,27 +32,14 @@ jobs:
           pip install -e . --no-deps
       - name: PyTest
         run: |
-          coverage run --branch -m pytest --doctest-modules --method bytecode
+          if [[ ${{ matrix.python-version }} != '3.12' ]]; then
+            coverage run --branch -m pytest --doctest-modules --method bytecode
+          fi
           coverage run -a --branch -m pytest --doctest-modules --method trace
           pytest --doctest-modules --method trace
       - name: Coverage
-        if: (! contains(matrix.python-version, 'pypy'))
-        env:
-          GITHUB_TOKEN: ${{ secrets.github_token }}
-          COVERALLS_FLAG_NAME: ${{ matrix.python-version}}
-          COVERALLS_PARALLEL: true
         run: |
-          pip install coveralls
+          coverage xml
           coverage report --show-missing
-          coveralls --service=github
-
-  finish:
-    needs: test
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Coveralls Finished
-        uses: coverallsapp/github-action@v2
-        with:
-          github-token: ${{ secrets.github_token }}
-          parallel-finished: true
+      - name: codecov
+        uses: codecov/codecov-action@v4

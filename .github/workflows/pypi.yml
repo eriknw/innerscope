@@ -11,11 +11,11 @@ jobs:
     if: github.repository == 'eriknw/innerscope'
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.8"
       - name: Install build dependencies
@@ -24,7 +24,7 @@ jobs:
           python -m pip install build twine
       - name: Build wheel and sdist
         run: python -m build --sdist --wheel
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: releases
           path: dist
@@ -33,7 +33,7 @@ jobs:
         run: python -m twine check --strict dist/*
       - name: Publish to PyPI
         if: contains(github.ref, 'refs/tags/')
-        uses: pypa/gh-action-pypi-publish@v1.8.6
+        uses: pypa/gh-action-pypi-publish@v1.8.11
         with:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}

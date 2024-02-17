@@ -20,7 +20,7 @@ if sys.version_info < (3, 11):
         + b"%b"
         + bytes([dis.opmap["BUILD_TUPLE"], 3, dis.opmap["RETURN_VALUE"], 0])
     )
-else:
+elif sys.version_info < (3, 12):
     NEW_CODE = (
         bytes([dis.opmap["LOAD_GLOBAL"]])
         + b"%b"
@@ -73,6 +73,8 @@ else:
             ]
         )
     )
+else:
+    NEW_CODE = b""  # NOT YET SUPPORTED
 BUILTINS = set(dir(builtins))
 
 
@@ -460,7 +462,7 @@ class ScopedFunction:
             self.missing.update(name for name in code.co_freevars if name not in outer_scope)
         self.builtin_names -= self.outer_scope.keys()
 
-        if self._code is None:
+        if self._code is None and method == "bytecode":
             self._create_code()
 
     def _create_code(self):
@@ -503,10 +505,14 @@ class ScopedFunction:
         co_names = (*code.co_names, "_innerscope_locals_", "_innerscope_secret_")
         if sys.version_info < (3, 11):
             new_code = NEW_CODE % (bytes([len(code.co_names)]), bytes([len(code.co_names) + 1]))
-        else:
+        elif sys.version_info < (3, 12):
             new_code = NEW_CODE % (
                 bytes([2 * len(code.co_names) + 1]),
                 bytes([2 * len(code.co_names) + 2]),
+            )
+        else:
+            raise NotImplementedError(
+                'Unable to create bytecode for method="bytecode" in this Python version'
             )
         co_code = co_code + new_code
 
@@ -615,7 +621,11 @@ class ScopedFunction:
             del outer_scope["_innerscope_locals_"]
             del outer_scope["_innerscope_secret_"]
             # closures show up in locals, but we want them only in outer_scope
-            for key in self._code.co_freevars:
+            if is_trace:
+                freevars = self.func.__code__.co_freevars
+            else:
+                freevars = self._code.co_freevars
+            for key in freevars:
                 del inner_scope[key]
             rv = Scope(self, outer_scope, return_value, inner_scope)
             if type(self) is ScopedGeneratorFunction:
@@ -734,7 +744,8 @@ class ScopedFunction:
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        self._create_code()
+        if self.method == "bytecode":
+            self._create_code()
 
 
 class ScopedGeneratorFunction(ScopedFunction):
