@@ -78,6 +78,16 @@ else:
 BUILTINS = set(dir(builtins))
 
 
+def _first_body_instruction(code):
+    """The first instruction after the prologue (MAKE_CELL, COPY_FREE_VARS, RESUME, etc.)."""
+    instructions = list(dis.get_instructions(code))
+    for i, inst in enumerate(instructions):
+        if inst.opname == "RESUME":
+            return instructions[i + 1] if i + 1 < len(instructions) else None
+    # Python < 3.11 has no RESUME and no prologue
+    return instructions[0] if instructions else None  # pragma: no cover (empty code)
+
+
 def _get_globals_recursive(func, *, seen=None, isclass=False):
     """Get all global names used by func and all functions and classes defined within it."""
     if isclass:
@@ -100,14 +110,15 @@ def _get_globals_recursive(func, *, seen=None, isclass=False):
     num_classes = 0
     for inst in dis.get_instructions(func):
         if inst.opname == "LOAD_CONST" and type(inst.argval) is CodeType:
+            isclass = False
             if num_classes > 0:
-                it = dis.get_instructions(inst.argval)
-                code_inst = next(it)
-                if code_inst.opname == "COPY_FREE_VARS":
-                    code_inst = next(it)
-                if code_inst.opname == "RESUME":
-                    code_inst = next(it)
-                isclass = code_inst.opname == "LOAD_NAME" and code_inst.argval == "__name__"
+                # Class bodies begin with `__module__ = __name__`
+                code_inst = _first_body_instruction(inst.argval)
+                isclass = (
+                    code_inst is not None
+                    and code_inst.opname == "LOAD_NAME"
+                    and code_inst.argval == "__name__"
+                )
                 num_classes -= isclass
             if inst.argval in seen:  # pragma: no cover
                 # I don't know how to get into a recursive cycle, but let's prevent it anyway.
