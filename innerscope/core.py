@@ -557,7 +557,9 @@ class ScopedFunction:
 
                 def trace_returns(frame, event, arg):
                     if event == "return":
-                        info["locals"] = frame.f_locals
+                        # A copy: since Python 3.13 (PEP 667), `f_locals` is a write-through
+                        # proxy of the frame, and we delete closure variables from the result.
+                        info["locals"] = dict(frame.f_locals)
                     if prev is not None:
                         prev(frame, event, arg)
 
