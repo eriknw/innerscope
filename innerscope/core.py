@@ -79,7 +79,7 @@ def _get_repr_table(title, scope, add_break=False):
         else:
             vals.append(html.escape(repr(val)))
     contents = "".join(
-        f"   <tr><td><tt>{key}</tt></td><td>{val}</td></td>\n"
+        f"   <tr><td><tt>{key}</tt></td><td>{val}</td></tr>\n"
         for key, val in zip(keys, vals, strict=True)
     )
     return (
@@ -98,7 +98,7 @@ def _get_repr_table(title, scope, add_break=False):
 def _get_repr_set(title, names):
     if not names:
         return ""
-    contents = "".join(f"<td><tt>{name}</tt></td>" for name in names)
+    contents = "".join(f"<td><tt>{html.escape(name)}</tt></td>" for name in names)
     contents = (
         '<div style="padding-left:10px;">'
         '<table style="max-width:100%; border:1px solid #AAAAAA; '
