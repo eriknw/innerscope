@@ -672,6 +672,25 @@ def test_classmethod():
     assert scope.return_value == 200
 
 
+def test_super_in_method():
+    # The `__class__` cell that `super()` uses is empty until the class is created
+    class Base:
+        def greet(self):
+            return "base"
+
+    class Child(Base):
+        @scoped_function
+        def greet(self):
+            parent = super().greet()
+            return parent + "+child"
+
+    child = Child()
+    scope = child.greet()
+    assert scope == {"self": child, "parent": "base", "__class__": Child}
+    assert scope.inner_scope == {"self": child, "parent": "base"}
+    assert scope.return_value == "base+child"
+
+
 def test_shadow_builtins():
     min = 1
 
