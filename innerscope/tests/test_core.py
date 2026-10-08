@@ -183,6 +183,47 @@ def test_use_closure():
     assert scope2 == dict(y=-1, a=-1, b=-1, c=3, d=0, e=2)
 
 
+def test_unassigned_closure():
+    # `fib` is a closure variable that isn't assigned until after the decorator runs
+    @scoped_function
+    def fib(n):
+        if n < 2:
+            return n
+        a = fib(n - 1).return_value
+        b = fib(n - 2).return_value
+        return a + b
+
+    assert not fib.missing
+    assert "fib" not in fib.outer_scope
+    scope = fib(10)
+    assert scope.return_value == 55
+    assert scope.outer_scope == {"fib": fib}
+    assert scope.inner_scope == {"n": 10, "a": 34, "b": 21}
+
+    def g():
+        y = later + 1
+
+    sg = scoped_function(g)
+    with pytest.raises(NameError, match="later"):
+        sg()
+    later = 1
+    assert sg() == {"later": 1, "y": 2}
+
+
+def test_missing_closure_raises():
+    x = 1
+
+    def f():
+        y = x + 1
+
+    sf = scoped_function(f, use_closures=False)
+    assert sf.missing == {"x"}
+    # A missing closure variable is unassigned (it used to be None)
+    with pytest.warns(UserWarning, match="Undefined variables: 'x'"), pytest.raises(NameError):
+        sf()
+    assert sf.bind(x=10)() == {"x": 10, "y": 11}
+
+
 def test_use_globals():
     def f1():
         x = global_x

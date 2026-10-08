@@ -396,14 +396,29 @@ class ScopedFunction:
         }
         self.outer_scope = outer_scope
         self.inner_names = set(code.co_varnames + code.co_cellvars)
+        # Closure variables not assigned yet (such as a function that calls itself)
+        self._unassigned_cells = {}
         if code.co_freevars:
             if use_closures:
-                # If this is a closure, move the enclosed variabled to `outer_scope`.
+                # If this is a closure, move the enclosed variables to `outer_scope`.
                 # Also, use values already in `outer_scope` instead of the original closures.
                 for name, cell in zip(code.co_freevars, self.func.__closure__):
-                    if name not in outer_scope:
+                    if name in outer_scope:
+                        continue
+                    try:
                         outer_scope[name] = cell.cell_contents
-            self._closure = tuple(CellType(outer_scope.get(name)) for name in code.co_freevars)
+                    except ValueError:  # Cell is empty
+                        self._unassigned_cells[name] = cell
+            # Use the original cell for an unassigned variable, so the function sees it once it
+            # is assigned, and an empty cell for a missing one, so using it raises NameError.
+            self._closure = tuple(
+                (
+                    CellType(outer_scope[name])
+                    if name in outer_scope
+                    else self._unassigned_cells.get(name, CellType())
+                )
+                for name in code.co_freevars
+            )
         else:
             self._closure = None
         if use_globals:
@@ -440,6 +455,11 @@ class ScopedFunction:
             )
         # Should we use builtins, builtins.__dict__, or self.func.__globals__['__builtins__']?
         outer_scope = self.outer_scope.copy()
+        for name, cell in self._unassigned_cells.items():
+            try:
+                outer_scope[name] = cell.cell_contents
+            except ValueError:  # Still unassigned
+                pass
         outer_scope["__builtins__"] = builtins
         injected = ["__builtins__"]
         is_trace = self.method == "trace"
