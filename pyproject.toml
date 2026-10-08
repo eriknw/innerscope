@@ -45,9 +45,7 @@ classifiers = [
     "Intended Audience :: Other Audience",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = [
-    "toolz",
-]
+dependencies = []
 
 [project.urls]
 homepage = "https://github.com/eriknw/innerscope"

@@ -3,16 +3,23 @@ import dis
 import functools
 import html
 import inspect
+import itertools
 import sys
 import warnings
 from collections.abc import Mapping
 from types import CellType, CodeType, FunctionType, MethodType
 
-from tlz import concatv, merge
-
 from . import _bytecode, cfg
 
 BUILTINS = set(dir(builtins))
+
+
+def _merge(*mappings):
+    """Merge mappings into a new dict; later mappings take precedence."""
+    rv = {}
+    for mapping in mappings:
+        rv.update(mapping)
+    return rv
 
 
 def _first_body_instruction(code):
@@ -135,7 +142,7 @@ class Scope(Mapping):
         return self.outer_scope[key]
 
     def __iter__(self):
-        return concatv(self.outer_scope, self.inner_scope)
+        return itertools.chain(self.outer_scope, self.inner_scope)
 
     def __len__(self):
         return len(self.outer_scope) + len(self.inner_scope)
@@ -377,7 +384,7 @@ class ScopedFunction:
         if isinstance(func, ScopedFunction):
             self.func = func.func
             code = func.func.__code__
-            outer_scope = merge(func.outer_scope, *mappings)
+            outer_scope = _merge(func.outer_scope, *mappings)
             self._code = func._code
             self._too_far = func._too_far
             global_names = func.missing | func.outer_scope.keys()  # includes globals and closures
@@ -388,7 +395,7 @@ class ScopedFunction:
         else:
             self.func = func
             code = func.__code__
-            outer_scope = merge(mappings)
+            outer_scope = _merge(*mappings)
             self._code = self._too_far = None
             global_names = _get_globals_recursive(self.func)
             self.builtin_names = global_names & BUILTINS
@@ -407,7 +414,7 @@ class ScopedFunction:
         # Only keep variables needed by the function (globals and closures)
         outer_scope = {
             key: outer_scope[key]
-            for key in concatv(global_names, code.co_freevars)
+            for key in itertools.chain(global_names, code.co_freevars)
             if key in outer_scope
         }
         self.outer_scope = outer_scope
