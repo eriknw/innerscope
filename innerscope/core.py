@@ -25,6 +25,11 @@ def _first_body_instruction(code):
     return instructions[0] if instructions else None  # pragma: no cover (empty code)
 
 
+# In class bodies, these look in the class namespace and then in globals.
+# LOAD_FROM_DICT_OR_GLOBALS (3.12+) is also used by the `__annotate__` functions of classes (3.14+).
+_LOAD_NAME_OR_GLOBAL = {"LOAD_NAME", "LOAD_FROM_DICT_OR_GLOBALS"}
+
+
 def _get_globals_recursive(func, *, seen=None, isclass=False):
     """Get all global names used by func and all functions and classes defined within it."""
     if isclass:
@@ -35,14 +40,16 @@ def _get_globals_recursive(func, *, seen=None, isclass=False):
                 local_names.add(inst.argval)
             elif inst.opname == "SETUP_ANNOTATIONS":  # Python < 3.14
                 local_names.add("__annotations__")
-            elif inst.opname == "LOAD_NAME":
+            elif inst.opname in _LOAD_NAME_OR_GLOBAL:
                 if inst.argval not in local_names:
                     global_names.add(inst.argval)
             elif inst.opname == "LOAD_GLOBAL":  # pragma: no cover
                 global_names.add(inst.argval)
     else:
         global_names = {
-            inst.argval for inst in dis.get_instructions(func) if inst.opname == "LOAD_GLOBAL"
+            inst.argval
+            for inst in dis.get_instructions(func)
+            if inst.opname in {"LOAD_GLOBAL", "LOAD_FROM_DICT_OR_GLOBALS"}
         }
     if seen is None:
         seen = set()
@@ -564,6 +571,11 @@ class ScopedFunction:
         if is_trace:
             inner_scope = info["locals"]
         elif _bytecode.STRATEGY == "capture":
+            if frame is None or frame.f_code is not code:  # pragma: no cover (safety)
+                raise _bytecode.BytecodeError(
+                    f"Unable to get the inner scope of {self.func.__qualname__}; is "
+                    "`sys._getframe` replaced?  Using `method='trace'` may work."
+                )
             # The frame took ownership of its locals when the function returned
             inner_scope = dict(frame.f_locals)
             del frame

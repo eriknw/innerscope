@@ -1,4 +1,6 @@
+import dataclasses
 import pickle
+import typing
 
 import pytest
 
@@ -588,6 +590,22 @@ def test_inner_class_with_annotations():
     scope = sf()
     assert scope["value"] == 1
     assert scope["Point"].__annotations__ == {"x": int, "y": "float"}
+
+
+def test_inner_class_annotations_use_globals():
+    # On 3.14+, annotations are evaluated by an `__annotate__` function
+    def f():
+        @dataclasses.dataclass
+        class Point:
+            x: int
+            c: typing.ClassVar[int] = 0
+
+        names = [field.name for field in dataclasses.fields(Point)]
+
+    sf = scoped_function(f)
+    assert {"dataclasses", "typing"} <= sf.outer_scope.keys()
+    assert not sf.missing
+    assert sf()["names"] == ["x"]
 
 
 def test_bad_method():
