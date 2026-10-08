@@ -147,6 +147,27 @@ def test_bindto_keeps_options():
     assert dict(sf2()) == {"a": 1, "b": 2}
 
 
+def test_options_are_kept():
+    def f():
+        a = 1
+
+    def g():
+        b = a + 1
+
+    for method in ["bytecode", "trace"]:
+        sf = scoped_function(f, use_closures=False, use_globals=False, method=method)
+        bound = sf.bind(c=3)
+        assert (bound.use_closures, bound.use_globals, bound.method) == (False, False, method)
+        scope = sf()
+        sg = scope.bindto(g)
+        assert (sg.use_closures, sg.use_globals, sg.method) == (False, False, method)
+        other = "trace" if method == "bytecode" else "bytecode"
+        assert scope.bindto(g, method=other).method == other
+        assert scope.callwith()(g, method=other) == {"a": 1, "b": 2}
+        assert innerscope.bindwith(a=1)(g, method=method).method == method
+        assert innerscope.callwith()(f, method=method).scoped_function.method == method
+
+
 def test_use_closure():
     a = b = c = d = e = x = y = -1
 

@@ -130,7 +130,7 @@ class Scope(Mapping):
     def __len__(self):
         return len(self.outer_scope) + len(self.inner_scope)
 
-    def bindto(self, func, *, use_closures=None, use_globals=None):
+    def bindto(self, func, *, use_closures=None, use_globals=None, method=None):
         """Bind the variables of this object to a function.
 
         >>> @call
@@ -172,7 +172,11 @@ class Scope(Mapping):
             use_closures = self.scoped_function.use_closures
         if use_globals is None:
             use_globals = self.scoped_function.use_globals
-        return scoped_function(func, self, use_closures=use_closures, use_globals=use_globals)
+        if method is None:
+            method = self.scoped_function.method
+        return scoped_function(
+            func, self, use_closures=use_closures, use_globals=use_globals, method=method
+        )
 
     def call(self, *func_and_args, **kwargs):
         """Bind the variables of this object to a function and call the function.
@@ -253,8 +257,10 @@ class Scope(Mapping):
         Scope.call
         """
 
-        def callwith_inner(func, *, use_closures=None, use_globals=None):
-            scoped = self.bindto(func, use_closures=use_closures, use_globals=use_globals)
+        def callwith_inner(func, *, use_closures=None, use_globals=None, method=None):
+            scoped = self.bindto(
+                func, use_closures=use_closures, use_globals=use_globals, method=method
+            )
             return scoped(*args, **kwargs)
 
         return callwith_inner
@@ -599,6 +605,7 @@ class ScopedFunction:
             kwargs,
             use_closures=self.use_closures,
             use_globals=self.use_globals,
+            method=self.method,
         )
 
     def __repr__(self):
@@ -744,9 +751,14 @@ def bindwith(*mappings, **kwargs):
     callwith
     """
 
-    def bindwith_inner(func, *, use_closures=True, use_globals=True):
+    def bindwith_inner(func, *, use_closures=True, use_globals=True, method="default"):
         return scoped_function(
-            func, *mappings, kwargs, use_closures=use_closures, use_globals=use_globals
+            func,
+            *mappings,
+            kwargs,
+            use_closures=use_closures,
+            use_globals=use_globals,
+            method=method,
         )
 
     return bindwith_inner
@@ -820,8 +832,10 @@ def callwith(*args, **kwargs):
     call
     """
 
-    def callwith_inner(func, *, use_closures=True, use_globals=True):
-        scoped = scoped_function(func, use_closures=use_closures, use_globals=use_globals)
+    def callwith_inner(func, *, use_closures=True, use_globals=True, method="default"):
+        scoped = scoped_function(
+            func, use_closures=use_closures, use_globals=use_globals, method=method
+        )
         return scoped(*args, **kwargs)
 
     return callwith_inner
