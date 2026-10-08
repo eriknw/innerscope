@@ -523,6 +523,8 @@ class ScopedFunction:
         finally:
             if is_trace:
                 sys.settrace(prev_trace)
+                # `trace_func` refers to itself; break the cycle so the locals are freed promptly
+                trace_func = None
             # Don't keep the frame (and everything it refers to) alive in a reference cycle
             frame = outer_scope.pop(_bytecode.FRAME, None)
         if is_trace:
