@@ -3,7 +3,7 @@ import pickle
 import pytest
 
 import innerscope
-from innerscope import cfg, scoped_function
+from innerscope import _bytecode, cfg, scoped_function
 
 global_x = 1
 hex = 1  # shadow a builtin
@@ -290,6 +290,9 @@ def test_early_return():
 
 
 def test_difficult_return():
+    # Only the "returns" strategy of the bytecode method (Python 3.10 and PyPy) limits how
+    # far a return statement may be from the next one or from the end.
+    too_far = cfg.default_method == "bytecode" and _bytecode.STRATEGY == "returns"
     # fmt: off
     x = 1
 
@@ -301,13 +304,18 @@ def test_difficult_return():
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         y = x
         return 2
 
-    if cfg.default_method == "bytecode":
+    if too_far:
         with pytest.raises(ValueError, match="The first return statement is too far away"):
             f1(True)
-    if cfg.default_method == "trace":
+    else:
         scope = f1(True)
         assert scope == {"x": 1, "arg": True}
         assert scope.return_value == 1
@@ -350,8 +358,18 @@ def test_difficult_return():
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         if arg == 1:
             return (1, 2, 3)
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
@@ -361,12 +379,12 @@ def test_difficult_return():
         y = x
         return 4
 
-    if cfg.default_method == "bytecode":
+    if too_far:
         with pytest.raises(ValueError, match="The first 2 return statements are too far away"):
             f3(0)
         with pytest.raises(ValueError, match="The first 2 return statements are too far away"):
             f3(1)
-    if cfg.default_method == "trace":
+    else:
         scope = f3(0)
         assert scope == {"arg": 0, "x": 1}
         assert scope.return_value == 1

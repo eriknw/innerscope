@@ -10,71 +10,8 @@ from types import CellType, CodeType, FunctionType, MethodType
 
 from tlz import concatv, merge
 
-from . import cfg
+from . import _bytecode, cfg
 
-if sys.version_info < (3, 11):
-    NEW_CODE = (
-        bytes([dis.opmap["LOAD_GLOBAL"]])
-        + b"%b"
-        + bytes([dis.opmap["CALL_FUNCTION"], 0, dis.opmap["LOAD_GLOBAL"]])
-        + b"%b"
-        + bytes([dis.opmap["BUILD_TUPLE"], 3, dis.opmap["RETURN_VALUE"], 0])
-    )
-elif sys.version_info < (3, 12):
-    NEW_CODE = (
-        bytes([dis.opmap["LOAD_GLOBAL"]])
-        + b"%b"
-        + bytes(
-            [
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["PRECALL"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CALL"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["LOAD_GLOBAL"],
-            ]
-        )
-        + b"%b"
-        + bytes(
-            [
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["CACHE"],
-                0,
-                dis.opmap["BUILD_TUPLE"],
-                3,
-                dis.opmap["RETURN_VALUE"],
-                0,
-            ]
-        )
-    )
-else:
-    NEW_CODE = b""  # NOT YET SUPPORTED
 BUILTINS = set(dir(builtins))
 
 
@@ -415,12 +352,18 @@ class ScopedFunction:
                 f'method= argument to {type(self).__name__} must be "bytecode", "trace", or '
                 f'"default".  Got {method!r}.  Using the default method is recommended.'
             )
+        if method == "bytecode" and _bytecode.STRATEGY is None:  # pragma: no cover
+            raise ValueError(
+                'method="bytecode" is not supported by this Python interpreter.  '
+                'Please use method="trace" instead.'
+            )
         self.method = method
         if isinstance(func, ScopedFunction):
             self.func = func.func
             code = func.func.__code__
             outer_scope = merge(func.outer_scope, *mappings)
             self._code = func._code
+            self._too_far = func._too_far
             global_names = func.missing | func.outer_scope.keys()  # includes globals and closures
             shadowed_globals = func.builtin_names & outer_scope.keys()
             global_names |= shadowed_globals  # outer_scope may override builtins
@@ -430,7 +373,7 @@ class ScopedFunction:
             self.func = func
             code = func.__code__
             outer_scope = merge(mappings)
-            self._code = None
+            self._code = self._too_far = None
             global_names = _get_globals_recursive(self.func)
             self.builtin_names = global_names & BUILTINS
         functools.update_wrapper(self, self.func)
@@ -477,62 +420,12 @@ class ScopedFunction:
             self._create_code()
 
     def _create_code(self):
-        # Change RETURN_VALUE to JUMP_FORWARD.
-        # This way, even long functions can have multiple return statements as long as
-        # they are near the end or near each other.  The advantage of this is that we
-        # don't need to change the code size, which would require handling other jumps.
         code = self.func.__code__
-        if code.co_code[-2] == dis.opmap["RETURN_VALUE"]:
-            # Remove the RETURN_VALUE that should be at the end
-            co_code = code.co_code[:-2]
+        if _bytecode.STRATEGY == "capture":
+            self._code = _bytecode.insert_frame_capture(code)
+            self._too_far = None
         else:
-            # Ending without a return, but let's add a value for us to return just in case
-            # assert code.co_code[-2] == dis.opmap["RAISE_VARARGS"]
-            co_code = code.co_code + bytes([dis.opmap["LOAD_CONST"], 0])
-        return_indices = [
-            inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
-        ]
-        jump_target = len(co_code)
-        target_index = len(return_indices) - 1
-        if len(return_indices) > 1:
-            chunks = []
-            for i in return_indices[-2::-1]:
-                target = jump_target - i - 2
-                while target_index > 0 and target > 255:
-                    target_index -= 1
-                    jump_target = return_indices[target_index]
-                    target = jump_target - i - 2
-                if target_index == 0 or target > 255 or target < 0:
-                    break
-                co_code, chunk = co_code[:i], co_code[i + 2 :]
-                chunks.append(chunk)
-                if sys.version_info >= (3, 10):
-                    target //= 2  # :crossed_fingers:
-                chunks.append(bytes([dis.opmap["JUMP_FORWARD"], target]))
-            chunks.append(co_code)
-            co_code = b"".join(reversed(chunks))
-
-        # Modify to end with `return (rv, locals(), secret)`
-        co_names = (*code.co_names, "_innerscope_locals_", "_innerscope_secret_")
-        if sys.version_info < (3, 11):
-            new_code = NEW_CODE % (bytes([len(code.co_names)]), bytes([len(code.co_names) + 1]))
-        elif sys.version_info < (3, 12):
-            new_code = NEW_CODE % (
-                bytes([2 * len(code.co_names) + 1]),
-                bytes([2 * len(code.co_names) + 2]),
-            )
-        else:
-            raise NotImplementedError(
-                'Unable to create bytecode for method="bytecode" in this Python version'
-            )
-        co_code = co_code + new_code
-
-        # stacksize must be at least 3, because we make a length three tuple
-        self._code = code.replace(
-            co_code=co_code,
-            co_names=co_names,
-            co_stacksize=max(code.co_stacksize, 3),
-        )
+            self._code, self._too_far = _bytecode.rewrite_returns(code)
 
     def __call__(self, *args, **kwargs):
         [scope] = self._call(args, kwargs)
@@ -548,8 +441,7 @@ class ScopedFunction:
         # Should we use builtins, builtins.__dict__, or self.func.__globals__['__builtins__']?
         outer_scope = self.outer_scope.copy()
         outer_scope["__builtins__"] = builtins
-        outer_scope["_innerscope_locals_"] = locals
-        outer_scope["_innerscope_secret_"] = secret = object()
+        injected = ["__builtins__"]
         is_trace = self.method == "trace"
         if is_trace:
             code = self.func.__code__
@@ -579,6 +471,15 @@ class ScopedFunction:
 
         else:
             code = self._code
+            if _bytecode.STRATEGY == "capture":
+                # The rewritten code stores its frame in the global FRAME when it starts
+                outer_scope[_bytecode.GETFRAME] = sys._getframe
+                injected.append(_bytecode.GETFRAME)
+            else:
+                # The rewritten code returns `(return_value, locals(), secret)`
+                outer_scope[_bytecode.LOCALS] = locals
+                outer_scope[_bytecode.SECRET] = secret = object()
+                injected.extend([_bytecode.LOCALS, _bytecode.SECRET])
 
         func = FunctionType(
             code, outer_scope, argdefs=self.func.__defaults__, closure=self._closure
@@ -622,65 +523,32 @@ class ScopedFunction:
         finally:
             if is_trace:
                 sys.settrace(prev_trace)
+            # Don't keep the frame (and everything it refers to) alive in a reference cycle
+            frame = outer_scope.pop(_bytecode.FRAME, None)
         if is_trace:
             inner_scope = info["locals"]
+        elif _bytecode.STRATEGY == "capture":
+            # The frame took ownership of its locals when the function returned
+            inner_scope = dict(frame.f_locals)
+            del frame
         else:
             try:
                 return_value, inner_scope, expect_secret = return_value
             except Exception:
                 expect_secret = None
-        if is_trace or secret is expect_secret:
-            del outer_scope["__builtins__"]
-            del outer_scope["_innerscope_locals_"]
-            del outer_scope["_innerscope_secret_"]
-            # closures show up in locals, but we want them only in outer_scope
-            if is_trace:
-                freevars = self.func.__code__.co_freevars
-            else:
-                freevars = self._code.co_freevars
-            for key in freevars:
-                del inner_scope[key]
-            rv = Scope(self, outer_scope, return_value, inner_scope)
-            if type(self) is ScopedGeneratorFunction:
-                return rv
-            else:
-                yield rv
-                return
-
-        return_indices = [
-            inst.offset for inst in dis.get_instructions(self.func) if inst.opname == "RETURN_VALUE"
-        ]
-        jump_target = len(func.__code__.co_code) - 2
-        target_index = len(return_indices) - 1
-        bad_returns = []
-        for i in return_indices[-2::-1]:
-            target = jump_target - i - 2
-            while target_index > 0 and target > 255:
-                target_index -= 1
-                jump_target = return_indices[target_index]
-                target = jump_target - i - 2
-            if target_index == 0 or target > 255 or target < 0:
-                target_index = 0
-                bad_returns.append(i)
-        if len(bad_returns) == 1:
-            return_msg = "The first return statement is too far away."
-        else:
-            return_msg = f"The first {len(bad_returns)} return statements are too far away."
-        next_closest = return_indices[len(bad_returns)] - bad_returns[0]
-        raise ValueError(
-            f"This may sound weird, but functions wrapped by {type(self).__name__} should have "
-            "return statements that are close together or near the end of the function.  "
-            "By close, I mean that each return statement in the compiled code should be "
-            "within 256 bytes of another return statement or the end of the function.  "
-            "Worried?  Don't be :).  This limitation is to ensure `innerscope` is rock-solid!"
-            f"\n\n{return_msg}  The next closest return statement is {next_closest} bytes away."
-            "\n\nA cute workaround is to add code such as `if bool(): return`."
-            "\n\nIf it's important to you that this limitation is fixed, then please submit "
-            "an issue (or a pull request!) to:\nhttps://github.com/eriknw/innerscope\n\n"
-            f'Another workaround is to use `method="trace"` in {type(self).__name__}.  This will '
-            "usually work, but it will be slower and may cause havoc if `sys.settrace` is "
-            "used by anything else.  The default method is preferred if possible."
-        )
+            if secret is not expect_secret:
+                raise self._too_far or _bytecode.BytecodeError(  # pragma: no cover (safety)
+                    f"Unable to get the inner scope of {self.func.__qualname__}"
+                )
+        for key in injected:
+            del outer_scope[key]
+        # closures show up in locals, but we want them only in outer_scope
+        for key in code.co_freevars:
+            inner_scope.pop(key, None)
+        rv = Scope(self, outer_scope, return_value, inner_scope)
+        if type(self) is ScopedGeneratorFunction:
+            return rv
+        yield rv
 
     def bind(self, *mappings, **kwargs):
         """Bind variables to a function's outer scope.
@@ -752,7 +620,7 @@ class ScopedFunction:
 
     def __getstate__(self):
         rv = dict(self.__dict__)
-        rv["_code"] = None
+        rv["_code"] = rv["_too_far"] = None
         return rv
 
     def __setstate__(self, state):
