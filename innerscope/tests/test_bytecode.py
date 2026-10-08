@@ -572,6 +572,8 @@ def test_location_table_round_trips():
         table = _bytecode._encode_location_table(positions, code.co_firstlineno)
         assert list(code.replace(co_linetable=table).co_positions()) == positions
     # Random positions of every kind we encode
+    if next(compile("x", "", "eval").co_positions())[2] is None:
+        pytest.skip("debug ranges are off (-X no_debug_ranges), so columns are dropped")
     rng = random.Random(0)
     code = many_handlers.__code__
     units = len(code.co_code) // 2

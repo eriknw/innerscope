@@ -19,6 +19,11 @@ ways depending on the interpreter (see ``STRATEGY``):
     the source locations in the location table.  Both are re-encoded, and the new code
     object is decoded and checked against what we meant to build before it is used.
 
+    Debuggers and coverage tools see the same lines and events as for the original function,
+    but tools that attach to the original code object (such as
+    ``sys.monitoring.set_local_events``) don't see calls of the copy, and profilers see one
+    extra call, to ``sys._getframe``.
+
 ``"returns"`` (CPython 3.10, and PyPy with 3.10-style bytecode)
     Replace each ``RETURN_VALUE`` with a ``JUMP_FORWARD`` to an epilogue that returns
     ``(return_value, locals(), secret)``.  A jump reaches 255 instructions, so each return
@@ -349,7 +354,7 @@ def rewrite_returns(code):
         error = TooFarError(
             "This may sound weird, but functions should have return statements that are close "
             "together or near the end of the function.  By close, I mean that each return "
-            "statement in the compiled code should be within 512 bytes of another return "
+            "statement in the compiled code should be within 510 bytes of another return "
             "statement or the end of the function.  Worried?  Don't be :).  This limitation "
             "is to ensure `innerscope` is rock-solid!"
             f"\n\n{which}  The next closest return statement is {distance} bytes away."
