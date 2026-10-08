@@ -3,7 +3,7 @@
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/innerscope.svg)](https://anaconda.org/conda-forge/innerscope)
 [![pypi](https://img.shields.io/pypi/v/innerscope.svg)](https://pypi.python.org/pypi/innerscope/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/innerscope)](https://pypi.python.org/pypi/innerscope/)
-[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/main/LICENSE)
 [![Tests](https://github.com/eriknw/innerscope/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/eriknw/innerscope/actions)
 [![Coverage](https://codecov.io/gh/eriknw/innerscope/graph/badge.svg?token=7WW2DKBYSS)](https://codecov.io/gh/eriknw/innerscope)
 
@@ -123,7 +123,7 @@ set()
 True
 ```
 ## How?
-This library *does not* use `exec`, `eval`, the AST, or source code.  It runs on [CPython](https://www.python.org/), [PyPy](https://www.pypy.org/), and [Stackless Python](https://github.com/stackless-dev/stackless/wiki).  You should feel comfortable using `innerscope`.  It actually offers *two* methods for obtaining the inner scope, and both are very reliable.  Of course we're doing *something* magical under the hood, and I would love to explain how some day.
+This library *does not* use `exec`, `eval`, the AST, or source code.  It runs on [CPython](https://www.python.org/) (including free-threaded builds) and [PyPy](https://www.pypy.org/).  You should feel comfortable using `innerscope`.  It actually offers *two* methods for obtaining the inner scope, and both are very reliable.  Of course we're doing *something* magical under the hood, and I would love to explain how some day.
 
 ## Why?
 It's all [@mrocklin's](https://github.com/mrocklin) fault for [asking a question.](https://github.com/dask/distributed/issues/4003)

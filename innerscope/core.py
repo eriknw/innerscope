@@ -327,8 +327,8 @@ class Scope(Mapping):
 class ScopedFunction:
     """Use to expose the inner scope of a wrapped function after being called.
 
-    The wrapped function should have no return statements.  Instead of a return value,
-    a `Scope` object is returned when called, which is a Mapping of the inner scope.
+    When called, a `Scope` object is returned, which is a Mapping of the inner scope.
+    The return value of the wrapped function is available as ``scope.return_value``.
 
     >>> @scoped_function
     ... def f():
@@ -669,8 +669,8 @@ class ScopedGeneratorFunction(ScopedFunction):
 def scoped_function(func=None, *mappings, use_closures=True, use_globals=True, method="default"):
     """Use to expose the inner scope of a wrapped function after being called.
 
-    The wrapped function should have no return statements.  Instead of a return value,
-    a `Scope` object is returned when called, which is a Mapping of the inner scope.
+    When called, a `Scope` object is returned, which is a Mapping of the inner scope.
+    The return value of the wrapped function is available as ``scope.return_value``.
 
     >>> @scoped_function
     ... def f():
