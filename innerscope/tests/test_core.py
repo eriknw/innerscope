@@ -782,3 +782,12 @@ def test_pickle():
     s = pickle.dumps(f)
     f2 = pickle.loads(s)
     assert f2() == dict(a=1, b=2)
+
+
+def test_unpickle_old_version():
+    # A ScopedFunction pickled by innerscope 0.7.0 has no `_unassigned_cells` or `_too_far`
+    state = scoped_function(global_func).__getstate__()
+    del state["_unassigned_cells"], state["_too_far"]
+    f = innerscope.core.ScopedFunction.__new__(innerscope.core.ScopedFunction)
+    f.__setstate__(state)
+    assert f() == dict(a=1, b=2)

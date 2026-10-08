@@ -659,6 +659,9 @@ class ScopedFunction:
         return rv
 
     def __setstate__(self, state):
+        # Pickles made by innerscope 0.7.0 and earlier lack these
+        state.setdefault("_unassigned_cells", {})
+        state.setdefault("_too_far", None)
         self.__dict__.update(state)
         if self.method == "bytecode":
             self._create_code()
