@@ -24,6 +24,11 @@ ways depending on the interpreter (see ``STRATEGY``):
     ``(return_value, locals(), secret)``.  A jump reaches 255 instructions, so each return
     must be that close to the next rewritten return or to the end of the function.
 
+    Debuggers and coverage tools see the epilogue: the "return" event has no line number
+    (so ``pdb`` fails when stepping over a return on 3.10) and returns the tuple, and a return
+    that jumps through another return reports that line as run.  Use the "trace" method when
+    debugging on these interpreters.
+
 The formats used here are documented in CPython's ``InternalDocs/exception_handling.md`` (or
 ``Objects/exception_handling_notes.txt``) and ``InternalDocs/code_objects.md`` (or
 ``Objects/locations.md``).  When a new Python is released, the tests (run with
