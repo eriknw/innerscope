@@ -186,10 +186,10 @@ def _encode_location_table(positions, firstlineno):
     return bytes(table)
 
 
-def _jump_targets(code):
-    """Offsets (in bytes) that the instructions of ``code`` may jump to."""
+def _jump_targets(instructions):
+    """Offsets (in bytes) that the instructions may jump to."""
     jumps = set(dis.hasjrel) | set(getattr(dis, "hasjabs", ()))
-    return {inst.argval for inst in dis.get_instructions(code) if inst.opcode in jumps}
+    return {inst.argval for inst in instructions if inst.opcode in jumps}
 
 
 def insert_frame_capture(code):
@@ -206,7 +206,7 @@ def insert_frame_capture(code):
         raise BytecodeError(f"Nothing after RESUME in {code.co_name}")
     # Insert after RESUME and its caches, i.e. at the start of the next instruction
     offset = instructions[resume + 1].offset
-    if any(target < offset for target in _jump_targets(code)):  # pragma: no cover
+    if any(target < offset for target in _jump_targets(instructions)):  # pragma: no cover
         raise BytecodeError(f"{code.co_name} jumps into its prologue")
 
     getframe_index = len(code.co_names)
@@ -243,15 +243,20 @@ def insert_frame_capture(code):
         co_linetable=_encode_location_table(positions, code.co_firstlineno),
     )
     _check_frame_capture(
-        code, new_code, offset=offset, size=len(snippet), entries=entries, positions=positions
+        code,
+        new_code,
+        instructions,
+        offset=offset,
+        size=len(snippet),
+        entries=entries,
+        positions=positions,
     )
     return new_code
 
 
-def _check_frame_capture(code, new_code, *, offset, size, entries, positions):
+def _check_frame_capture(code, new_code, old, *, offset, size, entries, positions):
     """Decode ``new_code`` and compare it to what ``insert_frame_capture`` meant to build."""
     name = code.co_name
-    old = list(dis.get_instructions(code))
     new = list(dis.get_instructions(new_code))
     inserted = [
         inst
