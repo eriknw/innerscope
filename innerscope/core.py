@@ -33,6 +33,8 @@ def _get_globals_recursive(func, *, seen=None, isclass=False):
         for inst in dis.get_instructions(func):
             if inst.opname == "STORE_NAME":
                 local_names.add(inst.argval)
+            elif inst.opname == "SETUP_ANNOTATIONS":  # Python < 3.14
+                local_names.add("__annotations__")
             elif inst.opname == "LOAD_NAME":
                 if inst.argval not in local_names:
                     global_names.add(inst.argval)

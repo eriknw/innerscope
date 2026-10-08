@@ -575,6 +575,21 @@ def test_inner_class():
     assert scope["A"].z == 120
 
 
+def test_inner_class_with_annotations():
+    def f():
+        class Point:
+            x: int = 1
+            y: "float"
+
+        value = Point.x
+
+    sf = scoped_function(f)
+    assert not sf.missing  # `__annotations__` belongs to the class body (Python < 3.14)
+    scope = sf()
+    assert scope["value"] == 1
+    assert scope["Point"].__annotations__ == {"x": int, "y": "float"}
+
+
 def test_bad_method():
     def f():
         x = 1
