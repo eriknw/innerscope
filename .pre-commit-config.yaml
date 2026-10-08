@@ -83,6 +83,8 @@ repos:
     hooks:
       - id: codespell
         types_or: [python, markdown, toml, yaml]
+        additional_dependencies:
+          - tomli; python_version<'3.11'
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.10
     hooks:

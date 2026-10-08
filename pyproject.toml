@@ -84,6 +84,10 @@ default_section = "THIRDPARTY"
 known_first_party = "innerscope"
 line_length = 100
 
+[tool.codespell]
+# "THIRDPARTY" is an isort section name, not a misspelling.
+ignore-words-list = "thirdparty"
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["innerscope"]
