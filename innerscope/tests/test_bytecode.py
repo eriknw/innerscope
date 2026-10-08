@@ -27,7 +27,7 @@ def _compile(source, name, namespace=None):
     namespace = {} if namespace is None else namespace
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", SyntaxWarning)  # e.g. `return` in `finally` (3.14+)
-        exec(compile(source, f"<{name}>", "exec"), namespace)  # noqa: S102
+        exec(compile(source, f"<{name}>", "exec"), namespace)
     return namespace[name]
 
 

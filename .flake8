@@ -3,12 +3,13 @@ max-line-length = 100
 inline-quotes = "
 exclude =
     build/
+# E203 whitespace before ':' (to be compatible with black)
 extend-ignore =
     E203,
     SIM105,
     SIM401,
-# E203 whitespace before ':' (to be compatible with black)
+# No trailing comments below: flake8 would read them as part of the pattern.
 per-file-ignores =
     __init__.py:F401
     innerscope/tests/test_repr.py:E501,F821,F841
-    innerscope/tests/*.py:C408,C416,T201,E702,E703,F821,F841,W606
+    innerscope/tests/*.py:B018,C408,C416,T201,E702,E703,F821,F841

@@ -1,7 +1,7 @@
 [build-system]
 build-backend = "setuptools.build_meta"
 requires = [
-    "setuptools >=64",
+    "setuptools >=77",
     "setuptools-git-versioning",
 ]
 
@@ -10,8 +10,10 @@ name = "innerscope"
 dynamic = ["version"]
 description = "Expose the inner scope of functions"
 readme = "README.md"
-requires-python = ">=3.8"
-license = {file = "LICENSE"}
+requires-python = ">=3.10"
+# PEP 639 expression; setuptools >=77 rejects it beside a "License ::" classifier.
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 authors = [
     {name = "Erik Welch", email = "erik.n.welch@gmail.com"},
     {name = "Innerscope contributors"},
@@ -27,15 +29,15 @@ keywords = [
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
@@ -54,7 +56,7 @@ changelog = "https://github.com/eriknw/innerscope/releases"
 
 [project.optional-dependencies]
 test = [
-    "pytest >=6",
+    "pytest >=7",
 ]
 
 [tool.setuptools.packages.find]
@@ -71,7 +73,7 @@ dirty_template = "{tag}+{ccount}.g{sha}.dirty"
 
 [tool.black]
 line-length = 100
-target-version = ["py38", "py39", "py310", "py311", "py312"]
+target-version = ["py310", "py311", "py312", "py313", "py314"]
 
 [tool.isort]
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
@@ -84,11 +86,11 @@ line_length = 100
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-testpaths = "innerscope/tests"
+testpaths = ["innerscope"]
 xfail_strict = true
 addopts = [
-    "--strict-config",  # Force error if config is mispelled
-    "--strict-markers",  # Force error if marker is mispelled (must be defined in config)
+    "--strict-config",  # Force error if config is misspelled
+    "--strict-markers",  # Force error if marker is misspelled (must be defined in config)
     "-ra",  # Print summary of all fails/errors
 ]
 log_cli_level = "info"
@@ -113,9 +115,9 @@ exclude_lines = [
 ]
 
 [tool.ruff]
-# https://github.com/astral-sh/ruff/
+# https://docs.astral.sh/ruff/
 line-length = 100
-target-version = "py38"
+target-version = "py310"
 [tool.ruff.lint]
 unfixable = [
     "F841",  # unused-variable (Note: can leave useless expression)
@@ -125,7 +127,7 @@ select = [
     "ALL",
 ]
 external = [
-    # noqa codes that ruff doesn't know about: https://github.com/charliermarsh/ruff#external
+    # noqa codes that ruff doesn't know about: https://docs.astral.sh/ruff/settings/#lint_external
 ]
 ignore = [
     # Would be nice to fix these
@@ -133,6 +135,7 @@ ignore = [
 
     # Intentionally ignored
     "COM812",  # Trailing comma missing
+    "CPY001",  # Missing copyright notice at top of file (Note: the LICENSE file covers it)
     "D203",  # 1 blank line required before class docstring (Note: conflicts with D211, which is preferred)
     "D400",  # First line should end with a period (Note: prefer D415, which also allows "?" and "!")
     "F403",  # `from .classes import *` used; unable to detect undefined names (Note: used to match networkx)
@@ -141,6 +144,8 @@ ignore = [
     "N806",  # Variable ... in function should be lowercase
     "N807",  # Function name should not start and end with `__`
     "N818",  # Exception name ... should be named with an Error suffix (Note: good advice)
+    "PERF203",  # `try`-`except` within a loop incurs performance overhead (Note: not since 3.11)
+    "PLC0415",  # `import` should be at top-level (Note: deferred imports can be intentional)
     "PLR0911",  # Too many return statements
     "PLR0912",  # Too many branches
     "PLR0913",  # Too many arguments to function call
@@ -150,6 +155,7 @@ ignore = [
     "RET502",  # Do not implicitly `return None` in function able to return non-`None` value
     "RET503",  # Missing explicit `return` at the end of function able to return non-`None` value
     "RET504",  # Unnecessary variable assignment before `return` statement
+    "RUF021",  # parenthesize-chained-operators (Note: we know the precedence of `and` and `or`)
     "S110",  # `try`-`except`-`pass` detected, consider logging the exception (Note: good advice, but we don't log)
     "S112",  # `try`-`except`-`continue` detected, consider logging the exception (Note: good advice, but we don't log)
     "SIM102",  # Use a single `if` statement instead of nested `if` statements (Note: often necessary)
@@ -167,9 +173,9 @@ ignore = [
     "EM",  # flake8-errmsg (Perhaps nicer, but too much work)
     "ICN",  # flake8-import-conventions (Doesn't allow "_" prefix such as `_np`)
     "PYI",  # flake8-pyi (We don't have stub files yet)
-    "SLF",  # flake8-self (We can use our own private variables--sheesh!)
+    "SLF",  # flake8-self (We can use our own private variables, sheesh!)
     "TID",  # flake8-tidy-imports (Rely on isort and our own judgement)
-    "TCH",  # flake8-type-checking (Note: figure out type checking later)
+    "TC",  # flake8-type-checking (Note: figure out type checking later)
     "ARG",  # flake8-unused-arguments (Sometimes helpful, but too strict)
     "TD",  # flake8-todos (Maybe okay to add some of these)
     "FIX",  # flake8-fixme (like flake8-todos)
@@ -181,7 +187,9 @@ ignore = [
 "__init__.py" = ["F401"]  # Allow unused imports (w/o defining `__all__`)
 "innerscope/tests/*py" = [
     "S101", "S301", "T201", "D103", "D100",  # Allow assert, print, pickle, and no docstring
+    "S102", "S311",  # Allow exec (to make functions) and `random` (for fuzzing)
     "A001", "A002", "B018", "C408", "C416", "E702", "E703", "F821", "F841",  # Let us test messy code
+    "RUF043", "TRY301",  # Let us test messy code
 ]
 "innerscope/tests/test_repr.py" = ["E501"]
 

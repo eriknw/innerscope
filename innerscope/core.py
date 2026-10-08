@@ -79,7 +79,8 @@ def _get_repr_table(title, scope, add_break=False):
         else:
             vals.append(html.escape(repr(val)))
     contents = "".join(
-        f"   <tr><td><tt>{key}</tt></td><td>{val}</td></td>\n" for key, val in zip(keys, vals)
+        f"   <tr><td><tt>{key}</tt></td><td>{val}</td></td>\n"
+        for key, val in zip(keys, vals, strict=True)
     )
     return (
         "<details open>\n"
@@ -408,7 +409,7 @@ class ScopedFunction:
             if use_closures:
                 # If this is a closure, move the enclosed variables to `outer_scope`.
                 # Also, use values already in `outer_scope` instead of the original closures.
-                for name, cell in zip(code.co_freevars, self.func.__closure__):
+                for name, cell in zip(code.co_freevars, self.func.__closure__, strict=True):
                     if name in outer_scope:
                         continue
                     try:

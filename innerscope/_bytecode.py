@@ -274,7 +274,7 @@ def _check_frame_capture(code, new_code, *, offset, size, entries, positions):
         (inst.opname, inst.argval if inst.opcode not in dis.hasjrel else None) for inst in rest
     ]:  # pragma: no cover
         raise BytecodeError(f"Instructions of {name} changed when rewriting it")
-    for before, after in zip(old, rest):
+    for before, after in zip(old, rest, strict=True):
         if before.opcode in dis.hasjrel:
             target = before.argval + size if before.argval >= offset else before.argval
             if after.argval != target:  # pragma: no cover
