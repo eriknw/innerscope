@@ -518,6 +518,9 @@ class ScopedFunction:
             return_value = func(*args, **kwargs)
             if type(self) is ScopedGeneratorFunction:
                 return_value = yield from return_value
+            # Only keep the frame if the call succeeded: its `f_back` is this frame, so if an
+            # exception traceback held both, they would keep each other alive.
+            frame = outer_scope.pop(_bytecode.FRAME, None)
         except UnboundLocalError as exc:
             message = exc.args and exc.args[0] or ""
             if isinstance(message, str) and (
@@ -550,10 +553,12 @@ class ScopedFunction:
         finally:
             if is_trace:
                 sys.settrace(prev_trace)
-                # `trace_func` refers to itself; break the cycle so the locals are freed promptly
-                trace_func = None
-            # Don't keep the frame (and everything it refers to) alive in a reference cycle
-            frame = outer_scope.pop(_bytecode.FRAME, None)
+                # `trace_func` refers to itself; break the cycle so the locals are freed
+                # promptly.  If a later call still has this `trace_func` installed (for
+                # example, interleaved generators), it hands control back to `prev_trace`.
+                trace_func = prev_trace
+            # The frame refers to these globals, which refer to the frame
+            outer_scope.pop(_bytecode.FRAME, None)
         if is_trace:
             inner_scope = info["locals"]
         elif _bytecode.STRATEGY == "capture":

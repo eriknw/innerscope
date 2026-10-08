@@ -401,12 +401,24 @@ def test_no_reference_cycles(method):
         yield 1
         yield 2
 
+    refs = []
+
+    def raises():
+        canary = Canary()
+        refs.append(weakref.ref(canary))
+        raise ValueError("boom")
+
     gc.disable()
     try:
         scope = scoped_function(f, method=method)()
         ref = weakref.ref(scope["canary"])
         del scope
         assert ref() is None
+
+        # A function that raises
+        with pytest.raises(ValueError, match="boom"):
+            scoped_function(raises, method=method)()
+        assert refs[0]() is None
 
         # A generator that is abandoned before it finishes
         gen = scoped_function(g, method=method)()
@@ -417,6 +429,43 @@ def test_no_reference_cycles(method):
         assert ref() is None
     finally:
         gc.enable()
+
+
+def test_trace_method_keeps_other_tracers():
+    """Interleaved calls with the trace method must leave a debugger or coverage tool working."""
+    calls = []
+
+    def other_tracer(frame, event, arg):  # stands in for coverage or a debugger
+        if event == "call":
+            calls.append(frame.f_code.co_name)
+
+    def g1():
+        a = 1
+        yield a
+
+    def g2():
+        b = 2
+        yield b
+
+    def probe():
+        pass
+
+    prev = sys.gettrace()
+    sys.settrace(other_tracer)
+    try:
+        it1 = scoped_function(g1, method="trace")()
+        it2 = scoped_function(g2, method="trace")()
+        next(it1)
+        next(it2)  # it2's trace function wraps it1's
+        assert list(it1) == []  # it1 finishes first
+        assert list(it2) == []
+        probe()
+        probe_seen = "probe" in calls
+        current = sys.gettrace()
+    finally:
+        sys.settrace(prev)
+    assert probe_seen
+    assert current is other_tracer
 
 
 def test_recursion():
