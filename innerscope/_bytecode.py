@@ -47,7 +47,7 @@ import sys
 GETFRAME = "_innerscope_getframe_"
 FRAME = "_innerscope_frame_"
 LOCALS = "_innerscope_locals_"
-SECRET = "_innerscope_secret_"  # noqa: S105 (not a password)
+SECRET = "_innerscope_secret_"
 
 # The newest Python version on which the "bytecode" method has been tested.  On newer
 # versions it is still available, but "trace" is the default (see `cfg.py`).

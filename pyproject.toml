@@ -194,6 +194,7 @@ ignore = [
     "RUF043", "TRY301",  # Let us test messy code
 ]
 "innerscope/tests/test_repr.py" = ["E501"]
+"innerscope/_bytecode.py" = ["S105"]  # `SECRET` names a global, not a password
 
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
