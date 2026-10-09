@@ -14,7 +14,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        shell: bash -l {0}
+        # Plain `bash` runs with `-eo pipefail`, so every failing command fails the step.
+        # (A custom shell such as `bash -l {0}` would hide all but the last command's failure.)
+        shell: bash
     strategy:
       # One failing cell should not cancel the others.
       fail-fast: false
