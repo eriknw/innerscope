@@ -33,12 +33,12 @@ jobs:
           - "pypy-3.11"
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           # Python 3.15 is a release candidate until 2026-10-09
@@ -49,6 +49,8 @@ jobs:
           pip install pytest coverage
           pip install -e . --no-deps
       - name: PyTest
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
           python -c 'import sys, innerscope; print(sys.version); print("default method:", innerscope.cfg.default_method)'
           # Run without coverage too: coverage tools use `sys.settrace` or `sys.monitoring`,
@@ -59,7 +61,7 @@ jobs:
             pytest --doctest-modules --method bytecode
             coverage run -a --branch -m pytest --doctest-modules --method bytecode
           else
-            echo "::warning::The bytecode method is not supported on ${{ matrix.python-version }}"
+            echo "::warning::The bytecode method is not supported on $PYTHON_VERSION"
           fi
       - name: Coverage
         run: |
@@ -68,6 +70,6 @@ jobs:
       # act, which runs these workflows locally, sets ACT; GitHub does not.
       - name: codecov
         if: ${{ !env.ACT }}
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

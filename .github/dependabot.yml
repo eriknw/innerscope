@@ -4,3 +4,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Wait a week before proposing a new release, so a compromised one can be caught first
+    cooldown:
+      default-days: 7
