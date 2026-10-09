@@ -74,8 +74,8 @@ def _get_globals_recursive(func, *, seen=None, isclass=False, class_names=frozen
             inst.argval
             for inst in instructions
             if inst.opname == "LOAD_GLOBAL"
-            or inst.opname == "LOAD_FROM_DICT_OR_GLOBALS"
-            and inst.argval not in class_names
+            # Annotation scopes look in their class body first, then in globals
+            or (inst.opname == "LOAD_FROM_DICT_OR_GLOBALS" and inst.argval not in class_names)
         }
     if seen is None:
         seen = set()
