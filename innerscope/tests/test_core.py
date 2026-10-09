@@ -1,5 +1,6 @@
 import dataclasses
 import pickle
+import sys
 import typing
 
 import pytest
@@ -482,8 +483,10 @@ def test_inner_and_outer_variable():
         match="local variable 'x' referenced before assignment.\n\nThis probably"
         "|cannot access local variable 'x' where it is not associated with a value."
         "\n\nThis probably",
-    ):
+    ) as info:
         f2()
+    assert "Pass 'x' in as an argument" in str(info.value)
+    assert "Don't assign to 'x'; use" in str(info.value)
 
     @scoped_function
     def f3():
@@ -608,6 +611,36 @@ def test_inner_class_annotations_use_globals():
     assert sf()["names"] == ["x"]
 
 
+def test_inner_class_annotations_use_class_names():
+    # On 3.14+, `__annotate__` looks up `T` in the class namespace before globals
+    def f():
+        class Point:
+            T = int
+            x: T = 1
+
+        value = Point.x
+
+    sf = scoped_function(f)
+    assert not sf.missing
+    assert sf()["value"] == 1
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="`type` statements are new in 3.12")
+def test_inner_class_type_alias_uses_class_names():
+    namespace = {}
+    exec(
+        "def f():\n"
+        "    class A:\n"
+        "        T = int\n"
+        "        type Alias = list[T]\n"
+        "    value = A.Alias.__value__\n",
+        namespace,
+    )
+    sf = scoped_function(namespace["f"])
+    assert not sf.missing
+    assert sf()["value"] == list[int]
+
+
 def test_bad_method():
     def f():
         x = 1
@@ -704,6 +737,10 @@ def test_classmethod():
     assert scope == {"self": a, "x": 100}
     assert scope.return_value == 200
 
+    # Like a plain function, accessing it on the class gives the function itself
+    assert type(A.f) is innerscope.core.ScopedFunction
+    assert A.f(a) == {"self": a, "x": 1, "y": 2}
+
 
 def test_super_in_method():
     # The `__class__` cell that `super()` uses is empty until the class is created
@@ -785,11 +822,19 @@ def test_shadow_builtins():
 def test_from_scopedgenerator():
     def gen():
         x = 1
+        yield x
+        return x + 1
 
     sgen = scoped_function(gen)
     sgen2 = scoped_function(sgen)
-    assert sgen() == {"x": 1}
-    assert sgen2() == {"x": 1}
+    assert type(sgen2) is innerscope.core.ScopedGeneratorFunction
+    for sg in [sgen, sgen2]:
+        it = sg()
+        assert next(it) == 1
+        with pytest.raises(StopIteration) as info:
+            next(it)
+        assert info.value.value == {"x": 1}
+        assert info.value.value.return_value == 2
 
 
 def test_bad_type():

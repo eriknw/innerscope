@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 import innerscope
 from innerscope import scoped_function
 
@@ -282,3 +286,12 @@ def test_repr_html_is_well_formed():
         assert checker.mismatched == []
         assert checker.stack == []
     assert "&lt;lambda&gt;" in scoped_function(lam)._repr_html_()
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="annotations are evaluated lazily on 3.14+")
+def test_repr_with_unresolvable_annotations():
+    namespace = {}
+    exec("def f(x: Undefined) -> AlsoUndefined:\n    y = x\n", namespace)
+    sf = scoped_function(namespace["f"])
+    assert "f(x: Undefined) -> AlsoUndefined" in repr(sf)
+    assert "f(x: Undefined) -&gt; AlsoUndefined" in sf._repr_html_()

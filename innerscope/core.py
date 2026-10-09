@@ -13,6 +13,16 @@ from . import _bytecode, cfg
 
 BUILTINS = set(dir(builtins))
 
+if sys.version_info >= (3, 14):
+    import annotationlib
+
+    def _signature(func):
+        # Annotations are evaluated lazily (PEP 649) and may name something not yet defined
+        return inspect.signature(func, annotation_format=annotationlib.Format.FORWARDREF)
+
+else:
+    _signature = inspect.signature
+
 
 def _merge(*mappings):
     """Merge mappings into a new dict; later mappings take precedence."""
@@ -37,12 +47,16 @@ def _first_body_instruction(code):
 _LOAD_NAME_OR_GLOBAL = {"LOAD_NAME", "LOAD_FROM_DICT_OR_GLOBALS"}
 
 
-def _get_globals_recursive(func, *, seen=None, isclass=False):
-    """Get all global names used by func and all functions and classes defined within it."""
+def _get_globals_recursive(func, *, seen=None, isclass=False, class_names=frozenset()):
+    """Get all global names used by func and all functions and classes defined within it.
+
+    ``class_names`` are the names assigned in the nearest enclosing class body.
+    """
+    instructions = list(dis.get_instructions(func))
     if isclass:
         global_names = set()
         local_names = {"__name__"}
-        for inst in dis.get_instructions(func):
+        for inst in instructions:
             if inst.opname == "STORE_NAME":
                 local_names.add(inst.argval)
             elif inst.opname == "SETUP_ANNOTATIONS":  # Python < 3.14
@@ -52,16 +66,21 @@ def _get_globals_recursive(func, *, seen=None, isclass=False):
                     global_names.add(inst.argval)
             elif inst.opname == "LOAD_GLOBAL":  # pragma: no cover
                 global_names.add(inst.argval)
+        # Annotation scopes (annotations on 3.14+, and `type` aliases and type parameters on
+        # 3.12+) are evaluated after the class body runs, so they see every name it assigns.
+        class_names = local_names
     else:
         global_names = {
             inst.argval
-            for inst in dis.get_instructions(func)
-            if inst.opname in {"LOAD_GLOBAL", "LOAD_FROM_DICT_OR_GLOBALS"}
+            for inst in instructions
+            if inst.opname == "LOAD_GLOBAL"
+            or inst.opname == "LOAD_FROM_DICT_OR_GLOBALS"
+            and inst.argval not in class_names
         }
     if seen is None:
         seen = set()
     num_classes = 0
-    for inst in dis.get_instructions(func):
+    for inst in instructions:
         if inst.opname == "LOAD_CONST" and type(inst.argval) is CodeType:
             isclass = False
             if num_classes > 0:
@@ -77,7 +96,11 @@ def _get_globals_recursive(func, *, seen=None, isclass=False):
                 # I don't know how to get into a recursive cycle, but let's prevent it anyway.
                 continue
             seen.add(inst.argval)
-            global_names.update(_get_globals_recursive(inst.argval, seen=seen, isclass=isclass))
+            global_names.update(
+                _get_globals_recursive(
+                    inst.argval, seen=seen, isclass=isclass, class_names=class_names
+                )
+            )
         elif inst.opname == "LOAD_BUILD_CLASS":
             num_classes += 1
     return global_names
@@ -174,7 +197,7 @@ class Scope(Mapping):
         >>> len(yummy['my_cheezburger']) < len(ew_piklz['my_cheezburger'])
         True
 
-        ``my_scope.bindsto(func)`` is equivalent to:
+        ``my_scope.bindto(func)`` is equivalent to:
 
          - ``bindwith(my_scope)(func)``
          - ``scoped_function(func, my_scope)``
@@ -223,7 +246,7 @@ class Scope(Mapping):
 
         ``my_scope.call(func, *args, **kwargs)`` is equivalent to:
 
-        - ``my_scope.bind(func)(*args, **kwargs)``
+        - ``my_scope.bindto(func)(*args, **kwargs)``
         - ``my_scope.callwith(*args, **kwargs)(func)``
         - ``bindwith(my_scope)(func)(*args, **kwargs)``
         - ``scoped_function(func, my_scope)(*args, **kwargs)``
@@ -262,7 +285,7 @@ class Scope(Mapping):
 
         ``my_scope.callwith(*args, **kwargs)(func)`` is equivalent to:
 
-        - ``my_scope.bind(func)(*args, **kwargs)``
+        - ``my_scope.bindto(func)(*args, **kwargs)``
         - ``my_scope.call(func, *args, **kwargs)``
         - ``bindwith(my_scope)(func)(*args, **kwargs)``
         - ``scoped_function(func, my_scope)(*args, **kwargs)``
@@ -375,11 +398,6 @@ class ScopedFunction:
                 f'method= argument to {type(self).__name__} must be "bytecode", "trace", or '
                 f'"default".  Got {method!r}.  Using the default method is recommended.'
             )
-        if method == "bytecode" and _bytecode.STRATEGY is None:  # pragma: no cover
-            raise ValueError(
-                'method="bytecode" is not supported by this Python interpreter.  '
-                'Please use method="trace" instead.'
-            )
         self.method = method
         if isinstance(func, ScopedFunction):
             self.func = func.func
@@ -458,12 +476,18 @@ class ScopedFunction:
             self._create_code()
 
     def _create_code(self):
+        # Also reached when unpickling, perhaps on a different interpreter than the pickler's
         code = self.func.__code__
         if _bytecode.STRATEGY == "capture":
             self._code = _bytecode.insert_frame_capture(code)
             self._too_far = None
-        else:
+        elif _bytecode.STRATEGY == "returns":
             self._code, self._too_far = _bytecode.rewrite_returns(code)
+        else:  # pragma: no cover
+            raise ValueError(
+                'method="bytecode" is not supported by this Python interpreter.  '
+                'Please use method="trace" instead.'
+            )
 
     def __call__(self, *args, **kwargs):
         [scope] = self._call(args, kwargs)
@@ -550,7 +574,7 @@ class ScopedFunction:
                 else:
                     name = message[
                         len("cannot access local variable ") : -len(
-                            "where it is not associated with a value"
+                            " where it is not associated with a value"
                         )
                     ]
                 raise UnboundLocalError(
@@ -637,7 +661,7 @@ class ScopedFunction:
 
     def __repr__(self):
         func = self.func
-        sig = inspect.signature(func)
+        sig = _signature(func)
         func = f" - func: {func.__module__}.{func.__name__}{sig}\n"
         inner = ", ".join(repr(x) for x in sorted(self.inner_names))
         inner = f" - inner_scope: {{{inner}}}\n"
@@ -656,7 +680,7 @@ class ScopedFunction:
 
     def _repr_html_(self):
         func = self.func
-        sig = inspect.signature(func)
+        sig = _signature(func)
         func = f"{func.__module__}.{func.__name__}{sig}"
         func = _get_repr_set("func", [func])
         inner = _get_repr_set("inner_names", self.inner_names)
@@ -672,6 +696,8 @@ class ScopedFunction:
         )
 
     def __get__(self, instance, owner=None):
+        if instance is None:  # accessed on the class, like a plain function
+            return self
         return MethodType(self, instance)
 
     def __getstate__(self):

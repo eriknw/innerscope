@@ -5,8 +5,8 @@ This module holds everything in innerscope that depends on the bytecode format. 
 ways depending on the interpreter (see ``STRATEGY``):
 
 ``"capture"`` (CPython 3.11+)
-    Insert three instructions right after the first ``RESUME`` that store the running frame
-    in the function's globals::
+    Insert three instructions (four on 3.11, which also needs ``PRECALL``) right after the
+    first ``RESUME`` that store the running frame in the function's globals::
 
         LOAD_GLOBAL  _innerscope_getframe_ + NULL    # sys._getframe
         CALL         0
@@ -235,8 +235,8 @@ def insert_frame_capture(code):
     size = len(snippet) // 2
 
     def move(unit, *, is_end=False):
-        # An exception range that ends exactly where we insert does not cover the snippet,
-        # but a range that starts there does.
+        # Only a range that spans the insertion point covers the snippet: one that ends there
+        # stays before it, and one that starts there moves after it.
         return unit + size if unit > units or (unit == units and not is_end) else unit
 
     entries = [

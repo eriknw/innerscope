@@ -386,6 +386,7 @@ def test_line_events_under_a_tracer(func, args):
     assert lines_traced(scoped) == expected
 
 
+@pytest.mark.skipif(sys.implementation.name != "cpython", reason="needs reference counting")
 @pytest.mark.parametrize("method", ["bytecode", "trace"])
 def test_no_reference_cycles(method):
     class Canary:
@@ -396,12 +397,13 @@ def test_no_reference_cycles(method):
         frame_holder = [sys._getframe()]  # a cycle the function itself creates
         del frame_holder
 
+    refs = []
+
     def g():
         canary = Canary()
+        refs.append(weakref.ref(canary))
         yield 1
         yield 2
-
-    refs = []
 
     def raises():
         canary = Canary()
@@ -418,14 +420,14 @@ def test_no_reference_cycles(method):
         # A function that raises
         with pytest.raises(ValueError, match="boom"):
             scoped_function(raises, method=method)()
-        assert refs[0]() is None
+        assert refs.pop()() is None
 
         # A generator that is abandoned before it finishes
         gen = scoped_function(g, method=method)()
         assert next(gen) == 1
-        ref = weakref.ref(gen.gi_frame.f_locals.get("canary") or Canary())
+        ref = refs.pop()
+        assert ref() is not None  # the generator is suspended
         del gen
-        gc.collect()  # the abandoned generator chain may need one collection
         assert ref() is None
     finally:
         gc.enable()
@@ -507,7 +509,7 @@ def test_return_distance_boundary():
     for n in range(100, 160):
         f = long_early_return_n(n)
         returns = [i.offset for i in dis.get_instructions(f) if i.opname == "RETURN_VALUE"]
-        # The final RETURN_VALUE is removed and the epilogue starts where it was
+        # The first return jumps to the last one, which jumps to the epilogue right after it
         distance = returns[-1] - returns[0] - 2
         sf = scoped_function(f, method="bytecode")
         if distance <= 510:
