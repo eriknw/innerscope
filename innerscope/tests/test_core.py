@@ -508,14 +508,16 @@ def test_list_comprehension():
     closure_val = 2
 
     def f():
-        y = [i for i in range(global_x)]
-        z = [j for j in range(closure_val)]
+        # Not `[*range(global_x)]`: the iteration variables must stay out of the scope
+        # (3.12+ inlines comprehensions into f, PEP 709).
+        y = [10 * i for i in range(global_x)]
+        z = [10 * j for j in range(closure_val)]
 
-    assert innerscope.call(f) == {"y": [0], "z": [0, 1], "global_x": 1, "closure_val": 2}
+    assert innerscope.call(f) == {"y": [0], "z": [0, 10], "global_x": 1, "closure_val": 2}
     scoped_f = scoped_function(f, use_globals=False, use_closures=False)
     assert scoped_f.missing == {"global_x", "closure_val"}
     scope = scoped_f.bind(global_x=2, closure_val=1)()
-    assert scope == {"y": [0, 1], "z": [0], "global_x": 2, "closure_val": 1}
+    assert scope == {"y": [0, 10], "z": [0], "global_x": 2, "closure_val": 1}
 
 
 def test_inner_functions():
