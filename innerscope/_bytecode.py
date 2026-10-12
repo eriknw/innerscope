@@ -305,52 +305,77 @@ class TooFarError(BytecodeError):
 
 
 def rewrite_returns(code):
-    """Return ``(new_code, error)`` with each RETURN_VALUE jumping to an epilogue.
+    """Return ``(new_code, error)`` with each return jumping to an epilogue.
 
     This is the "returns" strategy for CPython 3.10 and PyPy.  The epilogue returns
     ``(return_value, locals(), secret)`` using the globals LOCALS and SECRET.  Returns that are
     too far from the end are left as they are, and ``error`` is the TooFarError to raise if
     one of them is used (or None if all were rewritten).
     """
-    co_code = code.co_code
-    returns = [inst.offset for inst in dis.get_instructions(code) if inst.opname == "RETURN_VALUE"]
-    # The epilogue goes after the original code, where the location table has no lines, so
-    # jumping to it doesn't look like running another line to debuggers or coverage tools.
-    body = bytearray(co_code)
+    # Each return is RETURN_VALUE (key None) or, on PyPy 3.12, RETURN_CONST (key: the oparg)
+    returns = [
+        (inst.offset, inst.arg if inst.opname == "RETURN_CONST" else None)
+        for inst in dis.get_instructions(code)
+        if inst.opname in {"RETURN_VALUE", "RETURN_CONST"}
+    ]
+
+    def epilogue(*load_return_value):
+        return assemble(
+            [
+                *load_return_value,
+                ("LOAD_GLOBAL", len(code.co_names)),
+                ("CALL_FUNCTION", 0),
+                ("LOAD_GLOBAL", len(code.co_names) + 1),
+                ("BUILD_TUPLE", 3),
+                ("RETURN_VALUE", 0),
+            ]
+        )
+
+    # The epilogues go after the original code, where the location table has no lines, so
+    # jumping to them doesn't look like running another line to debuggers or coverage tools.
+    # Each RETURN_CONST constant gets its own epilogue that first loads it.  A return may jump
+    # to its epilogue, or to a rewritten return of the same kind (which jumps on from there).
+    body = bytearray(code.co_code)
+    epilogues = epilogue()
+    targets = {None: [len(body)]}
+    for _, key in reversed(returns):
+        if key not in targets:
+            targets[key] = [len(body) + len(epilogues)]
+            epilogues += epilogue(("LOAD_CONST", key))
     jump_forward = dis.opmap["JUMP_FORWARD"]
-    targets = [len(body)]  # where a return may jump: the epilogue or a rewritten return
+    extended_arg = dis.opmap["EXTENDED_ARG"]
     too_far = []
-    for offset in reversed(returns):
+    for offset, key in reversed(returns):
         # JUMP_FORWARD counts instructions (2 bytes each) from the next instruction
-        reachable = [t for t in targets if t - offset - 2 <= 2 * 255]
+        reachable = [t for t in targets[key] if t - offset - 2 <= 2 * 255]
         if not reachable:
-            # Every earlier return is even farther away, so stop here.
-            too_far = returns[: returns.index(offset) + 1]
-            break
+            # Too far, and so is every earlier return of this kind
+            too_far.append((offset, key))
+            continue
         target = max(reachable)
         body[offset : offset + 2] = bytes([jump_forward, (target - offset - 2) // 2])
-        targets.append(offset)
-    epilogue = assemble(
-        [
-            ("LOAD_GLOBAL", len(code.co_names)),
-            ("CALL_FUNCTION", 0),
-            ("LOAD_GLOBAL", len(code.co_names) + 1),
-            ("BUILD_TUPLE", 3),
-            ("RETURN_VALUE", 0),
-        ]
-    )
+        # A RETURN_CONST of constant 256 or later has EXTENDED_ARG prefixes, which would
+        # extend the jump too
+        prefix = offset - 2
+        while prefix >= 0 and body[prefix] == extended_arg:
+            body[prefix + 1] = 0
+            prefix -= 2
+        targets[key].append(offset)
     new_code = code.replace(
-        co_code=bytes(body) + epilogue,
+        co_code=bytes(body) + epilogues,
         co_names=(*code.co_names, LOCALS, SECRET),
         co_stacksize=max(code.co_stacksize, 3),
     )
     error = None
     if too_far:
-        if len(too_far) == 1:
+        if [offset for offset, _ in returns[: len(too_far)]] != sorted(o for o, _ in too_far):
+            which = f"{len(too_far)} of the return statements are too far away."
+        elif len(too_far) == 1:
             which = "The first return statement is too far away."
         else:
             which = f"The first {len(too_far)} return statements are too far away."
-        distance = min(targets) - too_far[-1] - 2
+        offset, key = too_far[0]  # the last one in the code
+        distance = min(targets[key]) - offset - 2
         error = TooFarError(
             "This may sound weird, but functions should have return statements that are close "
             "together or near the end of the function.  By close, I mean that each return "

@@ -235,6 +235,14 @@ many_names = _compile(
     {f"g{i}": i for i in range(300)},
 )
 
+# Returns constant 300 (with EXTENDED_ARG before RETURN_CONST on PyPy 3.12)
+many_constants = _compile(
+    "def many_constants(flag):\n"
+    + "".join(f"    c{i} = {i}.5\n" for i in range(300))
+    + "    if flag:\n        return 'early'\n    return 'late'\n",
+    "many_constants",
+)
+
 many_handlers = _compile(
     "def many_handlers():\n"
     + "".join(
@@ -288,6 +296,8 @@ CASES = [
     (walrus, ([],)),
     (exception_variable, ()),
     (many_names, ()),
+    (many_constants, (True,)),
+    (many_constants, (False,)),
     (many_handlers, ()),
     (long_early_return, (True,)),
     (long_early_return, (False,)),
@@ -534,10 +544,11 @@ def test_return_distance_boundary():
 
 
 def long_early_return_n(n):
+    # Returning variables (not constants) gives RETURN_VALUE everywhere, even on PyPy 3.12
     return _compile(
-        "def f(flag):\n    if flag:\n        return 'early'\n"
+        "def f(flag):\n    early = 'early'\n    if flag:\n        return early\n"
         + "    global_x\n" * n
-        + "    late = True\n",
+        + "    late = True\n    return late\n",
         "f",
         {"global_x": 1},
     )
