@@ -33,6 +33,15 @@ jobs:
           - "3.15t"
           - "pypy-3.10"
           - "pypy-3.11"
+          - "pypy-3.12"
+        include:
+          # Other CPUs (macos-latest is arm64; ubuntu-latest and windows-latest are x86_64)
+          - os: ubuntu-24.04-arm
+            python-version: "3.15"
+          - os: windows-11-arm
+            python-version: "3.15"
+          - os: macos-15-intel
+            python-version: "3.15"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,7 +52,7 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
-          # Python 3.15 is a release candidate until 2026-10-09
+          # For a Python in the matrix that has only pre-releases so far
           allow-prereleases: true
       - name: Install dependencies
         run: |
@@ -64,6 +73,13 @@ jobs:
             coverage run -a --branch -m pytest --doctest-modules --method bytecode
           else
             echo "::warning::The bytecode method is not supported on $PYTHON_VERSION"
+          fi
+          # The experimental JIT (3.14+) is built into the macOS and Windows builds, but is off
+          # unless PYTHON_JIT=1.  It compiles hot code, such as test_hot_function's.
+          if python -c 'import sys; sys.exit(not (hasattr(sys, "_jit") and sys._jit.is_available()))'; then
+            PYTHON_JIT=1 python -c 'import sys; assert sys._jit.is_enabled(); print("JIT enabled")'
+            PYTHON_JIT=1 pytest --doctest-modules --method bytecode
+            PYTHON_JIT=1 pytest --doctest-modules --method trace
           fi
       - name: Coverage
         run: |
