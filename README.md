@@ -135,7 +135,7 @@ True
 
 ## How?
 
-This library _does not_ use `exec`, `eval`, the AST, or source code. It runs on [CPython](https://www.python.org/) (including free-threaded builds) and [PyPy](https://www.pypy.org/). You should feel comfortable using `innerscope`. It actually offers _two_ methods for obtaining the inner scope, and both are very reliable. Of course we're doing _something_ magical under the hood, and I would love to explain how some day.
+This library _does not_ use `exec`, `eval`, the AST, or source code. It runs on [CPython](https://www.python.org/) (including free-threaded builds, and in WebAssembly with [Pyodide](https://pyodide.org/)) and [PyPy](https://www.pypy.org/). You should feel comfortable using `innerscope`. It actually offers _two_ methods for obtaining the inner scope, and both are very reliable. Of course we're doing _something_ magical under the hood, and I would love to explain how some day.
 
 ## Why?
 
