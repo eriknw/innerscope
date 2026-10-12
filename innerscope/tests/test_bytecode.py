@@ -492,6 +492,26 @@ def test_trace_method_keeps_other_tracers():
     assert current is other_tracer
 
 
+@pytest.mark.parametrize("method", METHODS)
+def test_hot_function(method):
+    """Each call must see its own frame and globals after the code is specialized.
+
+    The loops make the code hot enough to be specialized, and also compiled when the
+    experimental JIT is on (``PYTHON_JIT=1`` on 3.14+ builds that have it).
+    """
+
+    def f(n):
+        total = 0
+        for i in range(n):
+            total += i * global_x
+        return total
+
+    sf = scoped_function(f, method=method)
+    for n in range(1, 300):
+        scope = sf(n)
+        assert scope == {"n": n, "total": n * (n - 1) // 2, "i": n - 1, "global_x": 1}
+
+
 def test_recursion():
     @scoped_function
     def factorial(n):
