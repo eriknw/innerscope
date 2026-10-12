@@ -32,16 +32,6 @@ def _merge(*mappings):
     return rv
 
 
-def _first_body_instruction(code):
-    """The first instruction after the prologue (MAKE_CELL, COPY_FREE_VARS, RESUME, etc.)."""
-    instructions = list(dis.get_instructions(code))
-    for i, inst in enumerate(instructions):
-        if inst.opname == "RESUME":
-            return instructions[i + 1] if i + 1 < len(instructions) else None
-    # Python < 3.11 has no RESUME and no prologue
-    return instructions[0] if instructions else None  # pragma: no cover (empty code)
-
-
 # In class bodies, these look in the class namespace and then in globals.
 # LOAD_FROM_DICT_OR_GLOBALS (3.12+) is also used by the `__annotate__` functions of classes (3.14+).
 _LOAD_NAME_OR_GLOBAL = {"LOAD_NAME", "LOAD_FROM_DICT_OR_GLOBALS"}
@@ -79,30 +69,20 @@ def _get_globals_recursive(func, *, seen=None, isclass=False, class_names=frozen
         }
     if seen is None:
         seen = set()
-    num_classes = 0
     for inst in instructions:
         if inst.opname == "LOAD_CONST" and type(inst.argval) is CodeType:
-            isclass = False
-            if num_classes > 0:
-                # Class bodies begin with `__module__ = __name__`
-                code_inst = _first_body_instruction(inst.argval)
-                isclass = (
-                    code_inst is not None
-                    and code_inst.opname == "LOAD_NAME"
-                    and code_inst.argval == "__name__"
-                )
-                num_classes -= isclass
             if inst.argval in seen:  # pragma: no cover
                 # I don't know how to get into a recursive cycle, but let's prevent it anyway.
                 continue
             seen.add(inst.argval)
+            # Of the code nested in a function, only class bodies are not "optimized".  (A class
+            # body usually begins with `__module__ = __name__`, but not always on PyPy 3.12.)
+            isclass = not inst.argval.co_flags & inspect.CO_OPTIMIZED
             global_names.update(
                 _get_globals_recursive(
                     inst.argval, seen=seen, isclass=isclass, class_names=class_names
                 )
             )
-        elif inst.opname == "LOAD_BUILD_CLASS":
-            num_classes += 1
     return global_names
 
 
