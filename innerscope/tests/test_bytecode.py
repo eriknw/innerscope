@@ -19,6 +19,11 @@ import pytest
 from innerscope import _bytecode, scoped_function
 
 CAPTURE = _bytecode.STRATEGY == "capture"
+# On an interpreter with no bytecode strategy, only the "trace" method is tested
+requires_bytecode = pytest.mark.skipif(
+    _bytecode.STRATEGY is None, reason='method="bytecode" is not supported here'
+)
+METHODS = [pytest.param("bytecode", marks=requires_bytecode), "trace"]
 # WebAssembly builds may not start threads (as in CPython's test.support.threading_helper)
 if sys.platform == "emscripten":
     CAN_START_THREAD = sys._emscripten_info.pthreads
@@ -311,6 +316,7 @@ def _case_id(case):
     return f"{func.__name__}{args!r}"[:60]
 
 
+@requires_bytecode
 @pytest.mark.parametrize("case", CASES, ids=_case_id)
 def test_methods_agree(case):
     func, args, kwargs = (*case, {}) if len(case) == 2 else case
@@ -344,7 +350,7 @@ def test_some_expected_scopes():
     assert scope.return_value == 299 // (299 % 7)
 
 
-@pytest.mark.parametrize("method", ["bytecode", "trace"])
+@pytest.mark.parametrize("method", METHODS)
 def test_traceback_line_numbers(method):
     def f(x):
         y = x + 1
@@ -360,6 +366,7 @@ def test_traceback_line_numbers(method):
     assert tb.tb_lineno == f.__code__.co_firstlineno + 2
 
 
+@requires_bytecode
 @pytest.mark.parametrize(
     ("func", "args"), [c[:2] for c in CASES[:20]], ids=[_case_id(c) for c in CASES[:20]]
 )
@@ -392,7 +399,7 @@ def test_line_events_under_a_tracer(func, args):
 
 
 @pytest.mark.skipif(sys.implementation.name != "cpython", reason="needs reference counting")
-@pytest.mark.parametrize("method", ["bytecode", "trace"])
+@pytest.mark.parametrize("method", METHODS)
 def test_no_reference_cycles(method):
     class Canary:
         pass
@@ -490,7 +497,7 @@ def test_recursion():
 
 
 @pytest.mark.skipif(not CAN_START_THREAD, reason="cannot start threads")
-@pytest.mark.parametrize("method", ["bytecode", "trace"])
+@pytest.mark.parametrize("method", METHODS)
 def test_threads(method):
     sf = scoped_function(match_statement, method=method)
     errors = []

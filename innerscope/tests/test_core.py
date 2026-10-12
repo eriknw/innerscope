@@ -150,6 +150,7 @@ def test_bindto_keeps_options():
     assert dict(sf2()) == {"a": 1, "b": 2}
 
 
+@pytest.mark.skipif(_bytecode.STRATEGY is None, reason="needs both methods")
 def test_options_are_kept():
     def f():
         a = 1
