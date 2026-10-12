@@ -19,6 +19,11 @@ import pytest
 from innerscope import _bytecode, scoped_function
 
 CAPTURE = _bytecode.STRATEGY == "capture"
+# WebAssembly builds may not start threads (as in CPython's test.support.threading_helper)
+if sys.platform == "emscripten":
+    CAN_START_THREAD = sys._emscripten_info.pthreads
+else:
+    CAN_START_THREAD = sys.platform != "wasi"
 global_x = 1
 
 
@@ -484,6 +489,7 @@ def test_recursion():
     assert scope["inner"]["inner"]["n"] == 3
 
 
+@pytest.mark.skipif(not CAN_START_THREAD, reason="cannot start threads")
 @pytest.mark.parametrize("method", ["bytecode", "trace"])
 def test_threads(method):
     sf = scoped_function(match_statement, method=method)
