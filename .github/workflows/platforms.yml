@@ -49,6 +49,59 @@ jobs:
           pytest --doctest-modules --method bytecode
           pytest --doctest-modules --method trace
 
+  options:
+    name: CPython ${{ matrix.python-version }} with interpreter options
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 rewrites returns, and 3.15 captures frames
+        python-version: ["3.10", "3.15"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e . --no-deps
+      - name: PyTest
+        run: |
+          # -O and -OO compile without asserts and docstrings, and -X dev adds runtime checks
+          options=("-O" "-OO" "-X dev")
+          if python -c 'import sys; sys.exit(sys.version_info < (3, 13))'; then
+            # A location table without columns (3.11+), and perf trampolines (3.12+ and 3.13+)
+            options+=("-X no_debug_ranges" "-X perf" "-X perf_jit")
+            # Python ignores -X options it doesn't support, which would test nothing
+            for perf in perf perf_jit; do
+              if ! python -X "$perf" -c 'import sys; sys.exit(not sys.is_stack_trampoline_active())'; then
+                echo "::error::-X $perf did not turn on the perf trampoline"
+                exit 1
+              fi
+            done
+          fi
+          status=0
+          for option in "${options[@]}"; do
+            read -ra args <<< "$option"
+            for method in bytecode trace; do
+              echo "::group::python $option, --method $method"
+              # Under -O, pytest warns that only asserts in tests are checked; that's expected
+              if ! python "${args[@]}" -m pytest --doctest-modules -W ignore::pytest.PytestConfigWarning --method "$method"; then
+                echo "::error::Tests failed under python $option, --method $method"
+                status=1
+              fi
+              echo "::endgroup::"
+            done
+          done
+          exit "$status"
+
   pyodide:
     name: Pyodide ${{ matrix.pyodide-version }} (WebAssembly)
     runs-on: ubuntu-latest
