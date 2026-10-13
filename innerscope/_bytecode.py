@@ -27,7 +27,10 @@ ways depending on the interpreter (see ``STRATEGY``):
 ``"returns"`` (CPython 3.10, and PyPy with 3.10-style bytecode)
     Replace each ``RETURN_VALUE`` with a ``JUMP_FORWARD`` to an epilogue that returns
     ``(return_value, locals(), secret)``.  A jump reaches 255 instructions, so each return
-    must be that close to the next rewritten return or to the end of the function.
+    must be that close to the next rewritten return or to the end of the function.  PyPy 3.12
+    also has ``RETURN_CONST``, so there each constant gets an epilogue of its own, and a
+    return can only jump through later returns of the same kind (the same constant, or any
+    computed value).
 
     Debuggers and coverage tools see the epilogue: the "return" event has no line number
     (so ``pdb`` fails when stepping over a return on 3.10) and returns the tuple, and a return
@@ -376,14 +379,28 @@ def rewrite_returns(code):
             which = f"The first {len(too_far)} return statements are too far away."
         offset, key = too_far[0]  # the last one in the code
         distance = min(targets[key]) - offset - 2
+        # The workaround must add a return that the stranded one can jump through
+        if key is not None:
+            kind = " that returns the same constant"
+            const = repr(code.co_consts[key])
+            if len(const) <= 40:
+                workaround = f"`if bool(): return {const}`"
+            else:
+                workaround = "`if bool(): return` followed by the same constant"
+        elif "RETURN_CONST" in dis.opmap:
+            kind = " that returns a computed value"
+            workaround = "`if bool(): return bool()`"  # a bare `return` is a RETURN_CONST
+        else:
+            kind = ""
+            workaround = "`if bool(): return`"
         error = TooFarError(
             "This may sound weird, but functions should have return statements that are close "
             "together or near the end of the function.  By close, I mean that each return "
             "statement in the compiled code should be within 510 bytes of another return "
-            "statement or the end of the function.  Worried?  Don't be :).  This limitation "
-            "is to ensure `innerscope` is rock-solid!"
-            f"\n\n{which}  The next closest return statement is {distance} bytes away."
-            "\n\nA cute workaround is to add code such as `if bool(): return`."
+            f"statement{kind} or the end of the function.  Worried?  Don't be :).  This "
+            "limitation is to ensure `innerscope` is rock-solid!"
+            f"\n\n{which}  The next closest return statement{kind} is {distance} bytes away."
+            f"\n\nA cute workaround is to add code such as {workaround}."
             "\n\nIf it's important to you that this limitation is fixed, then please submit "
             "an issue (or a pull request!) to:\nhttps://github.com/eriknw/innerscope\n\n"
             'Another workaround is to use `method="trace"`.  This will usually work, but it '

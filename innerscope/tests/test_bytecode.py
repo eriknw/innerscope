@@ -10,6 +10,7 @@ import dis
 import gc
 import pickle
 import random
+import re
 import sys
 import threading
 import warnings
@@ -573,6 +574,31 @@ def long_early_return_n(n):
         "f",
         {"global_x": 1},
     )
+
+
+@pytest.mark.skipif(_bytecode.STRATEGY != "returns", reason="only rewriting returns has limits")
+@pytest.mark.parametrize("early", ["'early'", "early"])  # a constant, and a computed value
+def test_too_far_workaround_works(early):
+    """The workaround that the error message suggests, added halfway, lets the return reach."""
+
+    def make(middle):
+        return _compile(
+            "def f(flag):\n    early = 'early'\n    if flag:\n"
+            f"        return {early}\n"
+            + "    global_x\n" * 100
+            + middle
+            + "    global_x\n" * 100
+            + "    late = True\n    return late\n",
+            "f",
+            {"global_x": 1},
+        )
+
+    with pytest.raises(_bytecode.TooFarError) as info:
+        scoped_function(make(""), method="bytecode")(True)
+    [workaround] = re.findall(r"workaround is to add code such as `([^`]+)`", str(info.value))
+    sf = scoped_function(make(f"    {workaround}\n"), method="bytecode")
+    assert sf(True).return_value == "early"
+    assert sf(False)["late"] is True
 
 
 @pytest.mark.skipif(not CAPTURE, reason="CPython 3.11+")
