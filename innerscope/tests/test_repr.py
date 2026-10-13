@@ -295,3 +295,24 @@ def test_repr_with_unresolvable_annotations():
     sf = scoped_function(namespace["f"])
     assert "f(x: Undefined) -> AlsoUndefined" in repr(sf)
     assert "f(x: Undefined) -&gt; AlsoUndefined" in sf._repr_html_()
+
+
+def test_names_are_sorted():
+    # Sets are ordered by hash, which changes from run to run (PYTHONHASHSEED)
+    def f():
+        zeta = epsilon + delta
+        beta = gamma + alpha
+
+    sf = scoped_function(f, use_globals=False)
+    html = sf._repr_html_()
+    assert html.index("<tt>beta</tt>") < html.index("<tt>zeta</tt>")
+    names = ["alpha", "delta", "epsilon", "gamma"]
+    positions = [html.index(f"<tt>{name}</tt>") for name in names]
+    assert positions == sorted(positions)
+    match = "'alpha', 'delta', 'epsilon', 'gamma'"
+    with pytest.warns(UserWarning, match=match), pytest.raises(NameError):
+        sf()
+    bound = sf.bind(gamma=3, alpha=1, epsilon=5, delta=4)
+    assert list(bound.outer_scope) == names
+    assert "{'alpha': 1, 'delta': 4, 'epsilon': 5, 'gamma': 3}" in repr(bound)
+    assert list(bound().outer_scope) == names

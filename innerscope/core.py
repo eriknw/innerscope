@@ -434,7 +434,6 @@ class ScopedFunction:
             for key in itertools.chain(global_names, code.co_freevars)
             if key in outer_scope
         }
-        self.outer_scope = outer_scope
         self.inner_names = set(code.co_varnames + code.co_cellvars)
         # Closure variables not assigned yet (such as a function that calls itself)
         self._unassigned_cells = {}
@@ -466,6 +465,8 @@ class ScopedFunction:
             for name in global_names:
                 if name not in outer_scope and name in func_globals:
                     outer_scope[name] = _resolve_lazy(func_globals[name])
+        # Sorted, so reprs don't depend on the order of a set (which changes from run to run)
+        self.outer_scope = outer_scope = dict(sorted(outer_scope.items()))
         self.missing = global_names - outer_scope.keys() - self.builtin_names
         if not use_closures:
             self.missing.update(name for name in code.co_freevars if name not in outer_scope)
@@ -495,7 +496,7 @@ class ScopedFunction:
     def _call(self, args, kwargs):
         if self.missing:
             warnings.warn(
-                f"Undefined variables: {', '.join(repr(name) for name in self.missing)}.\n"
+                f"Undefined variables: {', '.join(repr(name) for name in sorted(self.missing))}.\n"
                 "Perhaps use `bind` method to assign values for these names before calling.",
                 stacklevel=2,
             )
@@ -682,8 +683,8 @@ class ScopedFunction:
         sig = _signature(func)
         func = f"{func.__module__}.{func.__name__}{sig}"
         func = _get_repr_set("func", [func])
-        inner = _get_repr_set("inner_names", self.inner_names)
-        missing = _get_repr_set("missing", self.missing)
+        inner = _get_repr_set("inner_names", sorted(self.inner_names))
+        missing = _get_repr_set("missing", sorted(self.missing))
         outer = _get_repr_table("outer_scope", self.outer_scope)
         return (
             f"<div><b>{type(self).__name__}</b><br>\n"
