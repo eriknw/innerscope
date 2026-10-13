@@ -23,6 +23,25 @@ if sys.version_info >= (3, 14):
 else:
     _signature = inspect.signature
 
+try:
+    from types import LazyImportType  # 3.15+ (PEP 810)
+except ImportError:
+    LazyImportType = None
+
+
+def _resolve_lazy(value):
+    """Resolve a lazy import (`lazy import json`), as looking up the global name would.
+
+    Then `outer_scope` holds the module, which (unlike the proxy) can be pickled.  If it can't
+    be imported, leave it for the function to raise, as it would without innerscope.
+    """
+    if LazyImportType is not None and type(value) is LazyImportType:
+        try:
+            return value.resolve()
+        except Exception:
+            return value
+    return value
+
 
 def _merge(*mappings):
     """Merge mappings into a new dict; later mappings take precedence."""
@@ -411,7 +430,7 @@ class ScopedFunction:
 
         # Only keep variables needed by the function (globals and closures)
         outer_scope = {
-            key: outer_scope[key]
+            key: _resolve_lazy(outer_scope[key])  # such as from `scoped_function(f, globals())`
             for key in itertools.chain(global_names, code.co_freevars)
             if key in outer_scope
         }
@@ -446,7 +465,7 @@ class ScopedFunction:
             func_globals = self.func.__globals__
             for name in global_names:
                 if name not in outer_scope and name in func_globals:
-                    outer_scope[name] = func_globals[name]
+                    outer_scope[name] = _resolve_lazy(func_globals[name])
         self.missing = global_names - outer_scope.keys() - self.builtin_names
         if not use_closures:
             self.missing.update(name for name in code.co_freevars if name not in outer_scope)

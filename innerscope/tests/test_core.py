@@ -260,6 +260,32 @@ def test_use_globals():
     assert scope == {"x": 1, "global_x": 1}
 
 
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="`lazy import` is new in 3.15")
+def test_lazy_imports():
+    namespace = {}
+    exec(
+        "lazy import json\n"
+        "lazy import innerscope_no_such_module\n"
+        "def f(flag):\n"
+        "    text = json.dumps([1])\n"
+        "    if flag:\n"
+        "        innerscope_no_such_module\n",
+        namespace,
+    )
+    sf = scoped_function(namespace["f"])
+    assert not sf.missing
+    # Resolved, so `outer_scope` holds the module (which cloudpickle can send to dask workers)
+    assert sf.outer_scope["json"] is sys.modules["json"]
+    # A module that can't be imported raises when used, as it would without innerscope
+    assert type(sf.outer_scope["innerscope_no_such_module"]).__name__ == "lazy_import"
+    assert sf(False)["text"] == "[1]"
+    with pytest.raises(ModuleNotFoundError, match="innerscope_no_such_module"):
+        sf(True)
+    # Also when given in a mapping, such as `scoped_function(f, globals())`
+    sf = scoped_function(namespace["f"], namespace, use_globals=False)
+    assert sf.outer_scope["json"] is sys.modules["json"]
+
+
 def test_closures():
     def f(arg_f):
         nonlocal_y = 2
