@@ -483,7 +483,7 @@ class ScopedFunction:
             self._too_far = None
         elif _bytecode.STRATEGY == "returns":
             self._code, self._too_far = _bytecode.rewrite_returns(code)
-        else:  # pragma: no cover
+        else:
             raise ValueError(
                 'method="bytecode" is not supported by this Python interpreter.  '
                 'Please use method="trace" instead.'

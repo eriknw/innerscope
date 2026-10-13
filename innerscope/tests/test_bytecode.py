@@ -8,6 +8,7 @@ exception and location tables compare our encoders with CPython's own decoders.
 import contextlib
 import dis
 import gc
+import pickle
 import random
 import sys
 import threading
@@ -658,17 +659,50 @@ def _with_code(co_code):
     return plain.__code__.replace(co_code=co_code, co_names=names, co_linetable=b"")
 
 
-def test_default_method():
+@pytest.mark.skipif(
+    sys.implementation.name not in {"cpython", "pypy"}, reason="no strategy is expected"
+)
+def test_expected_strategy():
+    # If the bytecode of a supported interpreter changes, fail here instead of quietly
+    # falling back to the "trace" method (and skipping the tests of "bytecode")
+    if sys.implementation.name == "cpython" and sys.version_info >= (3, 11):
+        assert _bytecode.STRATEGY == "capture"
+    else:
+        assert _bytecode.STRATEGY == "returns"
+
+
+@pytest.mark.parametrize(
+    ("strategy", "tested_through", "expected"),
+    [
+        ("capture", sys.version_info[:2], "bytecode"),
+        ("returns", sys.version_info[:2], "bytecode"),
+        ("capture", (3, 9), "trace"),  # a Python newer than innerscope was tested with
+        (None, sys.version_info[:2], "trace"),  # an interpreter with no strategy
+    ],
+)
+def test_default_method(monkeypatch, strategy, tested_through, expected):
     import importlib
 
     import innerscope.cfg
 
+    monkeypatch.setattr(_bytecode, "STRATEGY", strategy)
+    monkeypatch.setattr(_bytecode, "TESTED_THROUGH", tested_through)
     old = innerscope.cfg.default_method
     try:
         importlib.reload(innerscope.cfg)
-        if _bytecode.STRATEGY is not None and sys.version_info[:2] <= _bytecode.TESTED_THROUGH:
-            assert innerscope.cfg.default_method == "bytecode"
-        else:  # pragma: no cover
-            assert innerscope.cfg.default_method == "trace"
+        assert innerscope.cfg.default_method == expected
     finally:
         innerscope.cfg.default_method = old
+
+
+@requires_bytecode
+def test_no_strategy(monkeypatch):
+    """Where "bytecode" is unsupported, it raises a clear error, and "trace" still works."""
+    pickled = pickle.dumps(scoped_function(plain, method="bytecode"))
+    monkeypatch.setattr(_bytecode, "STRATEGY", None)
+    match = 'method="bytecode" is not supported by this Python interpreter'
+    with pytest.raises(ValueError, match=match):
+        scoped_function(plain, method="bytecode")
+    with pytest.raises(ValueError, match=match):
+        pickle.loads(pickled)  # e.g., pickled by a dask client and loaded on a worker
+    assert scoped_function(plain, method="trace")() == {"a": 1, "b": 2}
