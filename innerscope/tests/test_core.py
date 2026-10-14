@@ -1,9 +1,12 @@
+import dataclasses
 import pickle
+import sys
+import typing
 
 import pytest
 
 import innerscope
-from innerscope import cfg, scoped_function
+from innerscope import _bytecode, cfg, scoped_function
 
 global_x = 1
 hex = 1  # shadow a builtin
@@ -147,6 +150,28 @@ def test_bindto_keeps_options():
     assert dict(sf2()) == {"a": 1, "b": 2}
 
 
+@pytest.mark.skipif(_bytecode.STRATEGY is None, reason="needs both methods")
+def test_options_are_kept():
+    def f():
+        a = 1
+
+    def g():
+        b = a + 1
+
+    for method in ["bytecode", "trace"]:
+        sf = scoped_function(f, use_closures=False, use_globals=False, method=method)
+        bound = sf.bind(c=3)
+        assert (bound.use_closures, bound.use_globals, bound.method) == (False, False, method)
+        scope = sf()
+        sg = scope.bindto(g)
+        assert (sg.use_closures, sg.use_globals, sg.method) == (False, False, method)
+        other = "trace" if method == "bytecode" else "bytecode"
+        assert scope.bindto(g, method=other).method == other
+        assert scope.callwith()(g, method=other) == {"a": 1, "b": 2}
+        assert innerscope.bindwith(a=1)(g, method=method).method == method
+        assert innerscope.callwith()(f, method=method).scoped_function.method == method
+
+
 def test_use_closure():
     a = b = c = d = e = x = y = -1
 
@@ -183,6 +208,47 @@ def test_use_closure():
     assert scope2 == dict(y=-1, a=-1, b=-1, c=3, d=0, e=2)
 
 
+def test_unassigned_closure():
+    # `fib` is a closure variable that isn't assigned until after the decorator runs
+    @scoped_function
+    def fib(n):
+        if n < 2:
+            return n
+        a = fib(n - 1).return_value
+        b = fib(n - 2).return_value
+        return a + b
+
+    assert not fib.missing
+    assert "fib" not in fib.outer_scope
+    scope = fib(10)
+    assert scope.return_value == 55
+    assert scope.outer_scope == {"fib": fib}
+    assert scope.inner_scope == {"n": 10, "a": 34, "b": 21}
+
+    def g():
+        y = later + 1
+
+    sg = scoped_function(g)
+    with pytest.raises(NameError, match="later"):
+        sg()
+    later = 1
+    assert sg() == {"later": 1, "y": 2}
+
+
+def test_missing_closure_raises():
+    x = 1
+
+    def f():
+        y = x + 1
+
+    sf = scoped_function(f, use_closures=False)
+    assert sf.missing == {"x"}
+    # A missing closure variable is unassigned (it used to be None)
+    with pytest.warns(UserWarning, match="Undefined variables: 'x'"), pytest.raises(NameError):
+        sf()
+    assert sf.bind(x=10)() == {"x": 10, "y": 11}
+
+
 def test_use_globals():
     def f1():
         x = global_x
@@ -192,6 +258,32 @@ def test_use_globals():
     assert scoped_function(f1, use_globals=True)() == {"x": 1, "global_x": 1}
     scope = scoped_function(f1, {"global_x": 1}, use_globals=True)()
     assert scope == {"x": 1, "global_x": 1}
+
+
+@pytest.mark.skipif(sys.version_info < (3, 15), reason="`lazy import` is new in 3.15")
+def test_lazy_imports():
+    namespace = {}
+    exec(
+        "lazy import json\n"
+        "lazy import innerscope_no_such_module\n"
+        "def f(flag):\n"
+        "    text = json.dumps([1])\n"
+        "    if flag:\n"
+        "        innerscope_no_such_module\n",
+        namespace,
+    )
+    sf = scoped_function(namespace["f"])
+    assert not sf.missing
+    # Resolved, so `outer_scope` holds the module (which cloudpickle can send to dask workers)
+    assert sf.outer_scope["json"] is sys.modules["json"]
+    # A module that can't be imported raises when used, as it would without innerscope
+    assert type(sf.outer_scope["innerscope_no_such_module"]).__name__ == "lazy_import"
+    assert sf(False)["text"] == "[1]"
+    with pytest.raises(ModuleNotFoundError, match="innerscope_no_such_module"):
+        sf(True)
+    # Also when given in a mapping, such as `scoped_function(f, globals())`
+    sf = scoped_function(namespace["f"], namespace, use_globals=False)
+    assert sf.outer_scope["json"] is sys.modules["json"]
 
 
 def test_closures():
@@ -290,6 +382,9 @@ def test_early_return():
 
 
 def test_difficult_return():
+    # Only the "returns" strategy of the bytecode method (Python 3.10 and PyPy) limits how
+    # far a return statement may be from the next one or from the end.
+    too_far = cfg.default_method == "bytecode" and _bytecode.STRATEGY == "returns"
     # fmt: off
     x = 1
 
@@ -301,13 +396,18 @@ def test_difficult_return():
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         y = x
         return 2
 
-    if cfg.default_method == "bytecode":
+    if too_far:
         with pytest.raises(ValueError, match="The first return statement is too far away"):
             f1(True)
-    if cfg.default_method == "trace":
+    else:
         scope = f1(True)
         assert scope == {"x": 1, "arg": True}
         assert scope.return_value == 1
@@ -350,8 +450,18 @@ def test_difficult_return():
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         if arg == 1:
             return (1, 2, 3)
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
+        x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
         x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ; x ;
@@ -361,12 +471,12 @@ def test_difficult_return():
         y = x
         return 4
 
-    if cfg.default_method == "bytecode":
+    if too_far:
         with pytest.raises(ValueError, match="The first 2 return statements are too far away"):
             f3(0)
         with pytest.raises(ValueError, match="The first 2 return statements are too far away"):
             f3(1)
-    if cfg.default_method == "trace":
+    else:
         scope = f3(0)
         assert scope == {"arg": 0, "x": 1}
         assert scope.return_value == 1
@@ -400,8 +510,10 @@ def test_inner_and_outer_variable():
         match="local variable 'x' referenced before assignment.\n\nThis probably"
         "|cannot access local variable 'x' where it is not associated with a value."
         "\n\nThis probably",
-    ):
+    ) as info:
         f2()
+    assert "Pass 'x' in as an argument" in str(info.value)
+    assert "Don't assign to 'x'; use" in str(info.value)
 
     @scoped_function
     def f3():
@@ -423,14 +535,16 @@ def test_list_comprehension():
     closure_val = 2
 
     def f():
-        y = [i for i in range(global_x)]
-        z = [j for j in range(closure_val)]
+        # Not `[*range(global_x)]`: the iteration variables must stay out of the scope
+        # (3.12+ inlines comprehensions into f, PEP 709).
+        y = [10 * i for i in range(global_x)]
+        z = [10 * j for j in range(closure_val)]
 
-    assert innerscope.call(f) == {"y": [0], "z": [0, 1], "global_x": 1, "closure_val": 2}
+    assert innerscope.call(f) == {"y": [0], "z": [0, 10], "global_x": 1, "closure_val": 2}
     scoped_f = scoped_function(f, use_globals=False, use_closures=False)
     assert scoped_f.missing == {"global_x", "closure_val"}
     scope = scoped_f.bind(global_x=2, closure_val=1)()
-    assert scope == {"y": [0, 1], "z": [0], "global_x": 2, "closure_val": 1}
+    assert scope == {"y": [0, 10], "z": [0], "global_x": 2, "closure_val": 1}
 
 
 def test_inner_functions():
@@ -493,6 +607,67 @@ def test_inner_class():
     scope = scoped_f.bind(a=20, global_x=2)()
     assert scope["A"].x == 3
     assert scope["A"].z == 120
+
+
+def test_inner_class_with_annotations():
+    def f():
+        class Point:
+            x: int = 1
+            y: "float"
+
+        value = Point.x
+
+    sf = scoped_function(f)
+    assert not sf.missing  # `__annotations__` belongs to the class body (Python < 3.14)
+    scope = sf()
+    assert scope["value"] == 1
+    assert scope["Point"].__annotations__ == {"x": int, "y": "float"}
+
+
+def test_inner_class_annotations_use_globals():
+    # On 3.14+, annotations are evaluated by an `__annotate__` function
+    def f():
+        @dataclasses.dataclass
+        class Point:
+            x: int
+            c: typing.ClassVar[int] = 0
+
+        names = [field.name for field in dataclasses.fields(Point)]
+
+    sf = scoped_function(f)
+    assert {"dataclasses", "typing"} <= sf.outer_scope.keys()
+    assert not sf.missing
+    assert sf()["names"] == ["x"]
+
+
+def test_inner_class_annotations_use_class_names():
+    # On 3.14+, `__annotate__` looks up `T` in the class namespace before globals
+    def f():
+        class Point:
+            T = int
+            x: T = 1
+
+        value = Point.x
+
+    sf = scoped_function(f)
+    assert not sf.missing
+    assert sf()["value"] == 1
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="`type` statements are new in 3.12")
+def test_inner_class_type_alias_uses_class_names():
+    namespace = {}
+    exec(
+        "def f():\n"
+        "    class A:\n"
+        "        T = int\n"
+        "        type Alias = list[T]\n"
+        "    value = A.Alias.__value__\n",
+        namespace,
+    )
+    sf = scoped_function(namespace["f"])
+    assert not sf.missing
+    assert sf()["value"] == list[int]
 
 
 def test_bad_method():
@@ -591,6 +766,29 @@ def test_classmethod():
     assert scope == {"self": a, "x": 100}
     assert scope.return_value == 200
 
+    # Like a plain function, accessing it on the class gives the function itself
+    assert type(A.f) is innerscope.core.ScopedFunction
+    assert A.f(a) == {"self": a, "x": 1, "y": 2}
+
+
+def test_super_in_method():
+    # The `__class__` cell that `super()` uses is empty until the class is created
+    class Base:
+        def greet(self):
+            return "base"
+
+    class Child(Base):
+        @scoped_function
+        def greet(self):
+            parent = super().greet()
+            return parent + "+child"
+
+    child = Child()
+    scope = child.greet()
+    assert scope == {"self": child, "parent": "base", "__class__": Child}
+    assert scope.inner_scope == {"self": child, "parent": "base"}
+    assert scope.return_value == "base+child"
+
 
 def test_shadow_builtins():
     min = 1
@@ -653,11 +851,19 @@ def test_shadow_builtins():
 def test_from_scopedgenerator():
     def gen():
         x = 1
+        yield x
+        return x + 1
 
     sgen = scoped_function(gen)
     sgen2 = scoped_function(sgen)
-    assert sgen() == {"x": 1}
-    assert sgen2() == {"x": 1}
+    assert type(sgen2) is innerscope.core.ScopedGeneratorFunction
+    for sg in [sgen, sgen2]:
+        it = sg()
+        assert next(it) == 1
+        with pytest.raises(StopIteration) as info:
+            next(it)
+        assert info.value.value == {"x": 1}
+        assert info.value.value.return_value == 2
 
 
 def test_bad_type():
@@ -683,3 +889,12 @@ def test_pickle():
     s = pickle.dumps(f)
     f2 = pickle.loads(s)
     assert f2() == dict(a=1, b=2)
+
+
+def test_unpickle_old_version():
+    # A ScopedFunction pickled by innerscope 0.7.0 has no `_unassigned_cells` or `_too_far`
+    state = scoped_function(global_func).__getstate__()
+    del state["_unassigned_cells"], state["_too_far"]
+    f = innerscope.core.ScopedFunction.__new__(innerscope.core.ScopedFunction)
+    f.__setstate__(state)
+    assert f() == dict(a=1, b=2)

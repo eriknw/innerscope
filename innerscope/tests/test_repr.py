@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 import innerscope
 from innerscope import scoped_function
 
@@ -52,7 +56,7 @@ def test_scope_repr_html():
         "<br><tt>- outer_scope: {}</tt><details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>inner_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hi&#x27;</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hi&#x27;</td></tr>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
@@ -72,14 +76,14 @@ def test_scope_repr_html():
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>outer_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hello&#x27;</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hello&#x27;</td></tr>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>inner_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>y</tt></td><td>&#x27;world&#x27;</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>y</tt></td><td>&#x27;world&#x27;</td></tr>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
@@ -106,14 +110,14 @@ def test_scope_repr_html():
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>outer_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>a</tt></td><td>in A._repr_html_</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>a</tt></td><td>in A._repr_html_</td></tr>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>inner_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>b</tt></td><td>in A._repr_html_</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>b</tt></td><td>in A._repr_html_</td></tr>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
@@ -203,14 +207,14 @@ def test_scoped_function_repr_html():
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>outer_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hello&#x27;</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>x</tt></td><td>&#x27;hello&#x27;</td></tr>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
         "<details open>\n"
         ' <summary style="display:list-item; outline:none;">\n'
         "  <tt>inner_scope</tt>\n"
-        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>y</tt></td><td>&#x27;world&#x27;</td></td>\n'
+        ' </summary> <div style="padding-left:10px;padding-bottom:5px;">  <table style="max-width:100%; border:1px solid #AAAAAA;">   <tr><th>Name</th><th>Value</th></tr>      <tr><td><tt>y</tt></td><td>&#x27;world&#x27;</td></tr>\n'
         "  </table>\n"
         " </div>\n"
         "</details>\n"
@@ -245,3 +249,70 @@ def test_scoped_function_missing_html():
         "<tt>- outer_scope: {}</tt>\n"
         "</div>"
     )
+
+
+def test_repr_html_is_well_formed():
+    from html.parser import HTMLParser
+
+    class TagChecker(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack = []
+            self.mismatched = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag != "br":
+                self.stack.append(tag)
+
+        def handle_endtag(self, tag):
+            top = self.stack.pop() if self.stack else None
+            if top != tag:
+                self.mismatched.append((top, tag))  # pragma: no cover (fails the test)
+
+    sentinel = object()  # its repr has angle brackets
+
+    def f(x=sentinel):
+        a = "<b>not bold</b>"
+
+    lam = lambda: None  # noqa: E731
+    for obj in [
+        scoped_function(f),
+        scoped_function(lam),
+        scoped_function(f)(),
+        innerscope.call(lam),
+    ]:
+        checker = TagChecker()
+        checker.feed(obj._repr_html_())
+        assert checker.mismatched == []
+        assert checker.stack == []
+    assert "&lt;lambda&gt;" in scoped_function(lam)._repr_html_()
+
+
+@pytest.mark.skipif(sys.version_info < (3, 14), reason="annotations are evaluated lazily on 3.14+")
+def test_repr_with_unresolvable_annotations():
+    namespace = {}
+    exec("def f(x: Undefined) -> AlsoUndefined:\n    y = x\n", namespace)
+    sf = scoped_function(namespace["f"])
+    assert "f(x: Undefined) -> AlsoUndefined" in repr(sf)
+    assert "f(x: Undefined) -&gt; AlsoUndefined" in sf._repr_html_()
+
+
+def test_names_are_sorted():
+    # Sets are ordered by hash, which changes from run to run (PYTHONHASHSEED)
+    def f():
+        zeta = epsilon + delta
+        beta = gamma + alpha
+
+    sf = scoped_function(f, use_globals=False)
+    html = sf._repr_html_()
+    assert html.index("<tt>beta</tt>") < html.index("<tt>zeta</tt>")
+    names = ["alpha", "delta", "epsilon", "gamma"]
+    positions = [html.index(f"<tt>{name}</tt>") for name in names]
+    assert positions == sorted(positions)
+    match = "'alpha', 'delta', 'epsilon', 'gamma'"
+    with pytest.warns(UserWarning, match=match), pytest.raises(NameError):
+        sf()
+    bound = sf.bind(gamma=3, alpha=1, epsilon=5, delta=4)
+    assert list(bound.outer_scope) == names
+    assert "{'alpha': 1, 'delta': 4, 'epsilon': 5, 'gamma': 3}" in repr(bound)
+    assert list(bound().outer_scope) == names

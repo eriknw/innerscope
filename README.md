@@ -3,11 +3,11 @@
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/innerscope.svg)](https://anaconda.org/conda-forge/innerscope)
 [![pypi](https://img.shields.io/pypi/v/innerscope.svg)](https://pypi.python.org/pypi/innerscope/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/innerscope)](https://pypi.python.org/pypi/innerscope/)
-[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://github.com/eriknw/innerscope/blob/main/LICENSE)
 [![Tests](https://github.com/eriknw/innerscope/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/eriknw/innerscope/actions)
 [![Coverage](https://codecov.io/gh/eriknw/innerscope/graph/badge.svg?token=7WW2DKBYSS)](https://codecov.io/gh/eriknw/innerscope)
 
-`innerscope` exposes the inner scope of functions and offers primitives suitable for creating pipelines.  It explores a design space around functions, dictionaries, and classes.
+`innerscope` exposes the inner scope of functions and offers primitives suitable for creating pipelines. It explores a design space around functions, dictionaries, and classes.
 
 **To install with pip:**
 `pip install innerscope`
@@ -16,6 +16,7 @@
 `conda install -c conda-forge innerscope`
 
 A function can be made to act like a dictionary:
+
 ```python
 @innerscope.call
 def info():
@@ -31,7 +32,9 @@ def info():
 >>> info.return_value
 'success!'
 ```
-Sometimes we want functions to be more *functional* and accept arguments:
+
+Sometimes we want functions to be more _functional_ and accept arguments:
+
 ```python
 if is_a_good_idea:
     suffix = 'the amazing'
@@ -49,9 +52,11 @@ def info_with_suffix(suffix=None):
 >>> info_with_suffix['full_name']
 'Erik Welch the bewildering'
 ```
+
 Cool!
 
-But, what if we want to reuse the data computed in `info`?  We can control *exactly* what values are within scope inside of a function (including from closures and globals; more on these later).  Let's bind the variables in `info` to a new function:
+But, what if we want to reuse the data computed in `info`? We can control _exactly_ what values are within scope inside of a function (including from closures and globals; more on these later). Let's bind the variables in `info` to a new function:
+
 ```python
 @info.bindto
 def add_suffix(suffix):
@@ -61,7 +66,8 @@ def add_suffix(suffix):
 >>> scope['full_name']
 'Erik Welch the astonishing'
 ```
-`add_suffix` here is a `ScopedFunction`.  It returns a `Scope`, which is the dict-like object we've already seen.
+
+`add_suffix` here is a `ScopedFunction`. It returns a `Scope`, which is the dict-like object we've already seen.
 
 ## `scoped_function` ftw!
 
@@ -90,7 +96,9 @@ True
 >>> scope2.inner_scope == {'d': 4, 'e': 5}
 True
 ```
-Suppose you're paranoid (like me!) and want to control whether a function uses values from closures or globals.  You're in luck!
+
+Suppose you're paranoid (like me!) and want to control whether a function uses values from closures or globals. You're in luck!
+
 ```python
 global_x = 1
 
@@ -111,10 +119,12 @@ True
 {'closure_y', 'global_x'}
 >>> paranoid_g()
 ```
+
 ```diff
 - UserWarning: Undefined variables: 'global_x', 'closure_y'.
 - Perhaps use `bind` method to assign values for these names before calling.
 ```
+
 ```python
 >>> new_g = paranoid_g.bind({'global_x': 100, 'closure_y': 200})
 >>> new_g.missing
@@ -122,12 +132,15 @@ set()
 >>> new_g() == {'global_x': 100, 'closure_y': 200, 'local_z': 300}
 True
 ```
+
 ## How?
-This library *does not* use `exec`, `eval`, the AST, or source code.  It runs on [CPython](https://www.python.org/), [PyPy](https://www.pypy.org/), and [Stackless Python](https://github.com/stackless-dev/stackless/wiki).  You should feel comfortable using `innerscope`.  It actually offers *two* methods for obtaining the inner scope, and both are very reliable.  Of course we're doing *something* magical under the hood, and I would love to explain how some day.
+
+This library _does not_ use `exec`, `eval`, the AST, or source code. It runs on [CPython](https://www.python.org/) (including free-threaded builds, and in WebAssembly with [Pyodide](https://pyodide.org/)) and [PyPy](https://www.pypy.org/). You should feel comfortable using `innerscope`. It actually offers _two_ methods for obtaining the inner scope, and both are very reliable. Of course we're doing _something_ magical under the hood, and I would love to explain how some day.
 
 ## Why?
+
 It's all [@mrocklin's](https://github.com/mrocklin) fault for [asking a question.](https://github.com/dask/distributed/issues/4003)
 `innerscope` is exploring a data model that could be convenient for running code remotely with [dask.](https://dask.org)
-I bet it would even be useful for building pipelines with dask.  I'm sure there are other creative uses for it just waiting to be discovered. **Update:** and [`afar`](https://github.com/eriknw/afar) has been born!
+I bet it would even be useful for building pipelines with dask. I'm sure there are other creative uses for it just waiting to be discovered. **Update:** and [`afar`](https://github.com/eriknw/afar) has been born!
 
-#### *This library is totally awesome and you should use it and tell all your friends* 😉 *!*
+#### _This library is totally awesome and you should use it and tell all your friends_ 😉 _!_

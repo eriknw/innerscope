@@ -1,0 +1,209 @@
+name: More platforms
+
+# Beyond test.yml: CPython debug builds (whose C assertions check the code that the "bytecode"
+# method makes), the next Python, WebAssembly, more CPU architectures, and the built wheel.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, for the nightly build of the next Python
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    name: CPython ${{ matrix.python-version }} debug build
+    runs-on: ubuntu-24.04
+    # The nightly build of CPython's main branch (from the deadsnakes nightly PPA) is an early
+    # warning: it may fail before innerscope supports that Python.
+    continue-on-error: ${{ endsWith(matrix.python-version, '-dev') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.15", "3.16-dev"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: deadsnakes/action@e640ac8743173a67cca4d7d77cd837e514bf98e8 # v3.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          debug: true
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e . --no-deps
+      - name: PyTest
+        run: |
+          python -c 'import sys; print(sys.version); assert hasattr(sys, "gettotalrefcount")'
+          python -c 'import innerscope; print("default method:", innerscope.cfg.default_method)'
+          pytest --doctest-modules --method bytecode
+          pytest --doctest-modules --method trace
+
+  options:
+    name: CPython ${{ matrix.python-version }} with interpreter options
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 rewrites returns, and 3.15 captures frames
+        python-version: ["3.10", "3.15"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e . --no-deps
+      - name: PyTest
+        run: |
+          # -O and -OO compile without asserts and docstrings, and -X dev adds runtime checks
+          options=("-O" "-OO" "-X dev")
+          if python -c 'import sys; sys.exit(sys.version_info < (3, 13))'; then
+            # A location table without columns (3.11+), and perf trampolines (3.12+ and 3.13+)
+            options+=("-X no_debug_ranges" "-X perf" "-X perf_jit")
+            # Python ignores -X options it doesn't support, which would test nothing
+            for perf in perf perf_jit; do
+              if ! python -X "$perf" -c 'import sys; sys.exit(not sys.is_stack_trampoline_active())'; then
+                echo "::error::-X $perf did not turn on the perf trampoline"
+                exit 1
+              fi
+            done
+          fi
+          status=0
+          for option in "${options[@]}"; do
+            read -ra args <<< "$option"
+            for method in bytecode trace; do
+              echo "::group::python $option, --method $method"
+              # Under -O, pytest warns that only asserts in tests are checked; that's expected
+              if ! python "${args[@]}" -m pytest --doctest-modules -W ignore::pytest.PytestConfigWarning --method "$method"; then
+                echo "::error::Tests failed under python $option, --method $method"
+                status=1
+              fi
+              echo "::endgroup::"
+            done
+          done
+          exit "$status"
+
+  pyodide:
+    name: Pyodide ${{ matrix.pyodide-version }} (WebAssembly)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # `pyodide venv` needs the same Python version on the host as in Pyodide
+          - pyodide-version: "314.0.7"
+            python-version: "3.14"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Install dependencies
+        env:
+          PYODIDE_VERSION: ${{ matrix.pyodide-version }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyodide-build
+          pyodide xbuildenv install "$PYODIDE_VERSION"
+          pyodide venv .venv-pyodide
+          .venv-pyodide/bin/pip install pytest
+          .venv-pyodide/bin/pip install .
+      - name: PyTest
+        run: |
+          .venv-pyodide/bin/python -c 'import sys; print(sys.version, sys.platform)'
+          # `python -m pytest` runs in a Pyodide venv; the `pytest` script does not
+          .venv-pyodide/bin/python -m pytest --doctest-modules --method bytecode
+          .venv-pyodide/bin/python -m pytest --doctest-modules --method trace
+
+  qemu:
+    name: ${{ matrix.platform }} (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # s390x is big-endian
+        platform: ["linux/s390x", "linux/ppc64le", "linux/riscv64", "linux/386"]
+        # The newest Python; the full image has git, which the version number comes from
+        image: ["python:3"]
+        include:
+          # Python 3.10 rewrites returns instead of capturing frames
+          - platform: "linux/s390x"
+            image: "python:3.10"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - name: PyTest
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          docker run --rm -i --platform "$PLATFORM" -v "$PWD:/src:ro" "$IMAGE" sh -s <<'EOF'
+          set -eu
+          cp -r /src /w
+          cd /w
+          python -c 'import sys, platform; print(sys.version, platform.machine(), sys.byteorder)'
+          export PIP_ROOT_USER_ACTION=ignore PIP_DISABLE_PIP_VERSION_CHECK=1
+          python -m pip install pytest
+          python -m pip install --no-deps -e .
+          python -m pytest --doctest-modules --method bytecode
+          python -m pytest --doctest-modules --method trace
+          EOF
+
+  wheel:
+    name: Test the built wheel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.15"
+      - name: Build the sdist, and the wheel from it
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+          python -m build
+          twine check --strict dist/*
+      - name: Install the wheel and run its tests outside the checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install pytest dist/*.whl
+          cd "$RUNNER_TEMP"
+          venv/bin/python -c 'import innerscope; print(innerscope.__file__, innerscope.__version__)'
+          venv/bin/python -m pytest --pyargs innerscope

@@ -2,46 +2,92 @@ name: Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    name: pytest (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        shell: bash -l {0}
+        # Plain `bash` runs with `-eo pipefail`, so every failing command fails the step.
+        # (A custom shell such as `bash -l {0}` would hide all but the last command's failure.)
+        shell: bash
     strategy:
+      # One failing cell should not cancel the others.
       fail-fast: false
       matrix:
         os: ["ubuntu-latest", "macos-latest", "windows-latest"]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "pypy-3.8", "pypy-3.9", "pypy-3.10"]
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+          - "3.14t"
+          - "3.15"
+          - "3.15t"
+          - "pypy-3.10"
+          - "pypy-3.11"
+          - "pypy-3.12"
+        include:
+          # Other CPUs (macos-latest is arm64; ubuntu-latest and windows-latest are x86_64)
+          - os: ubuntu-24.04-arm
+            python-version: "3.15"
+          - os: windows-11-arm
+            python-version: "3.15"
+          - os: macos-15-intel
+            python-version: "3.15"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+          # For a Python in the matrix that has only pre-releases so far
+          allow-prereleases: true
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install toolz pytest coverage
+          pip install pytest coverage
           pip install -e . --no-deps
       - name: PyTest
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
-          if [[ ${{ matrix.python-version }} != '3.12' ]]; then
-            coverage run --branch -m pytest --doctest-modules --method bytecode
-          fi
-          coverage run -a --branch -m pytest --doctest-modules --method trace
+          python -c 'import sys, innerscope; print(sys.version); print("default method:", innerscope.cfg.default_method)'
+          # Run without coverage too: coverage tools use `sys.settrace` or `sys.monitoring`,
+          # which both methods must work with, but not depend on.
           pytest --doctest-modules --method trace
+          coverage run --branch -m pytest --doctest-modules --method trace
+          if python -c 'import sys; from innerscope import _bytecode; sys.exit(_bytecode.STRATEGY is None)'; then
+            pytest --doctest-modules --method bytecode
+            coverage run -a --branch -m pytest --doctest-modules --method bytecode
+          else
+            echo "::warning::The bytecode method is not supported on $PYTHON_VERSION"
+          fi
+          # The experimental JIT (3.14+) is built into the macOS and Windows builds, but is off
+          # unless PYTHON_JIT=1.  It compiles hot code, such as test_hot_function's.
+          if python -c 'import sys; sys.exit(not (hasattr(sys, "_jit") and sys._jit.is_available()))'; then
+            PYTHON_JIT=1 python -c 'import sys; assert sys._jit.is_enabled(); print("JIT enabled")'
+            PYTHON_JIT=1 pytest --doctest-modules --method bytecode
+            PYTHON_JIT=1 pytest --doctest-modules --method trace
+          fi
       - name: Coverage
         run: |
           coverage xml
           coverage report --show-missing
+      # act, which runs these workflows locally, sets ACT; GitHub does not.
       - name: codecov
-        uses: codecov/codecov-action@v4
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        if: ${{ !env.ACT }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
