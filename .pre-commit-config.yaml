@@ -92,7 +92,7 @@ repos:
   # `pyroma` may help keep our package standards up to date if best practices change.
   # This is probably a "low value" check though and safe to remove if we want faster pre-commit.
   - repo: https://github.com/regebro/pyroma
-    rev: "5.0.1"
+    rev: "5.1b1"
     hooks:
       - id: pyroma
         args: [-n, "10", .]
