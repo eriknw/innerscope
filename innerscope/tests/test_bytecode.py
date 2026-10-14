@@ -28,7 +28,7 @@ requires_bytecode = pytest.mark.skipif(
 METHODS = [pytest.param("bytecode", marks=requires_bytecode), "trace"]
 # WebAssembly builds may not start threads (as in CPython's test.support.threading_helper)
 if sys.platform == "emscripten":
-    CAN_START_THREAD = sys._emscripten_info.pthreads
+    CAN_START_THREAD = sys._emscripten_info.pthreads  # pragma: no cover (Pyodide)
 else:
     CAN_START_THREAD = sys.platform != "wasi"
 global_x = 1
@@ -367,7 +367,7 @@ def test_traceback_line_numbers(method):
     def f(x):
         y = x + 1
         z = y / 0  # line 3 of f
-        return z
+        return z  # pragma: no cover (unreachable)
 
     with pytest.raises(ZeroDivisionError) as info:
         scoped_function(f, method=method)(1)
@@ -378,17 +378,19 @@ def test_traceback_line_numbers(method):
     assert tb.tb_lineno == f.__code__.co_firstlineno + 2
 
 
+LINE_CASES = [c[:2] for c in CASES[:20]] + [(ends_with_raise, (False,))]  # and one that raises
+
+
 @requires_bytecode
-@pytest.mark.parametrize(
-    ("func", "args"), [c[:2] for c in CASES[:20]], ids=[_case_id(c) for c in CASES[:20]]
-)
+@pytest.mark.parametrize(("func", "args"), LINE_CASES, ids=[_case_id(c) for c in LINE_CASES])
 def test_line_events_under_a_tracer(func, args):
     """Debuggers and coverage tools must see the same lines as in the original function."""
 
     def lines_traced(f):
         lines = []
 
-        def tracer(frame, event, arg):
+        # Code run by a trace function isn't traced, so coverage tools can't see this
+        def tracer(frame, event, arg):  # pragma: no cover
             if frame.f_code.co_name == func.__code__.co_name:
                 if event == "line":
                     lines.append(frame.f_lineno)
@@ -427,7 +429,7 @@ def test_no_reference_cycles(method):
         canary = Canary()
         refs.append(weakref.ref(canary))
         yield 1
-        yield 2
+        yield 2  # pragma: no cover (abandoned before this)
 
     def raises():
         canary = Canary()
@@ -461,7 +463,8 @@ def test_trace_method_keeps_other_tracers():
     """Interleaved calls with the trace method must leave a debugger or coverage tool working."""
     calls = []
 
-    def other_tracer(frame, event, arg):  # stands in for coverage or a debugger
+    # Stands in for coverage or a debugger (and, as a trace function, coverage can't see it)
+    def other_tracer(frame, event, arg):  # pragma: no cover
         if event == "call":
             calls.append(frame.f_code.co_name)
 
@@ -532,20 +535,20 @@ def test_recursion():
 @pytest.mark.parametrize("method", METHODS)
 def test_threads(method):
     sf = scoped_function(match_statement, method=method)
-    errors = []
+    # Each thread appends to its own list, so a thread that raises leaves its list short
+    results = {k: [] for k in range(8)}
 
     def worker(k):
         for _ in range(100):
             scope = sf([k, -k])
-            if scope["a"] != k or scope["b"] != -k:
-                errors.append(dict(scope))
+            results[k].append((scope["a"], scope["b"]))
 
-    threads = [threading.Thread(target=worker, args=(k,)) for k in range(8)]
+    threads = [threading.Thread(target=worker, args=(k,)) for k in results]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
-    assert not errors
+    assert results == {k: [(k, -k)] * 100 for k in results}
 
 
 @pytest.mark.skipif(_bytecode.STRATEGY != "returns", reason="only rewriting returns has limits")
@@ -601,6 +604,49 @@ def test_too_far_workaround_works(early):
     assert sf(False)["late"] is True
 
 
+@pytest.mark.skipif(
+    _bytecode.STRATEGY != "returns" or "RETURN_CONST" not in dis.opmap,
+    reason="PyPy 3.12 has RETURN_CONST, and each constant must reach a return of its own",
+)
+def test_too_far_constant():
+    # A constant stranded among computed returns, which can all jump through one another
+    f = _compile(
+        "def f(flag):\n    if flag == 0:\n        return flag\n"
+        "    if flag == 1:\n        return 'stranded'\n"
+        + "    global_x\n" * 100
+        + "    if flag == 2:\n        return flag\n"
+        + "    global_x\n" * 100
+        + "    return flag\n",
+        "f",
+        {"global_x": 1},
+    )
+    sf = scoped_function(f, method="bytecode")
+    assert [sf(flag).return_value for flag in [0, 2, 3]] == [0, 2, 3]
+    with pytest.raises(_bytecode.TooFarError) as info:
+        sf(1)
+    message = str(info.value)
+    assert "1 of the 4 return statements is too far away." in message
+    assert "`if bool(): return 'stranded'`" in message
+
+    # A constant too long to suggest returning it verbatim
+    long = repr("x" * 50)
+    f = _compile(
+        f"def f(flag):\n    if flag:\n        return {long}\n"
+        + "    global_x\n" * 300
+        + "    return flag\n",
+        "f",
+        {"global_x": 1},
+    )
+    sf = scoped_function(f, method="bytecode")
+    assert sf(False).return_value is False
+    with pytest.raises(_bytecode.TooFarError) as info:
+        sf(True)
+    message = str(info.value)
+    assert "The first return statement is too far away." in message
+    assert "`if bool(): return` followed by the same constant" in message
+    assert long not in message
+
+
 @pytest.mark.skipif(not CAPTURE, reason="CPython 3.11+")
 def test_exception_table_matches_cpython():
     parse = getattr(dis, "_parse_exception_table", None)
@@ -645,7 +691,8 @@ def test_location_table_round_trips():
         table = _bytecode._encode_location_table(positions, code.co_firstlineno)
         assert list(code.replace(co_linetable=table).co_positions()) == positions
     # Random positions of every kind we encode
-    if next(compile("x", "", "eval").co_positions())[2] is None:
+    if next(compile("x", "", "eval").co_positions())[2] is None:  # pragma: no cover
+        # Only in the "interpreter options" CI job, which doesn't measure coverage
         pytest.skip("debug ranges are off (-X no_debug_ranges), so columns are dropped")
     rng = random.Random(0)
     code = many_handlers.__code__

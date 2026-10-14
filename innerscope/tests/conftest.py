@@ -4,12 +4,11 @@ import pytest
 def pytest_configure(config):
     from innerscope import _bytecode, cfg
 
-    method = config.getoption("--method", None)
+    method = config.getoption("--method", None) or cfg.default_method
     if method == "bytecode" and _bytecode.STRATEGY is None:  # pragma: no cover
         raise pytest.UsageError('method="bytecode" is not supported by this Python interpreter')
-    if method is not None:
-        cfg.default_method = method
-    print(f'Running tests with "{cfg.default_method}" default method')
+    cfg.default_method = method
+    print(f'Running tests with "{method}" default method')
 
 
 @pytest.fixture(scope="session", autouse=True)

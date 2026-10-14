@@ -372,7 +372,9 @@ def rewrite_returns(code):
     error = None
     if too_far:
         if [offset for offset, _ in returns[: len(too_far)]] != sorted(o for o, _ in too_far):
-            which = f"{len(too_far)} of the return statements are too far away."
+            # Only on PyPy 3.12, where a constant may be stranded among other kinds of returns
+            verb = "is" if len(too_far) == 1 else "are"
+            which = f"{len(too_far)} of the {len(returns)} return statements {verb} too far away."
         elif len(too_far) == 1:
             which = "The first return statement is too far away."
         else:

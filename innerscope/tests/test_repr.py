@@ -267,7 +267,7 @@ def test_repr_html_is_well_formed():
         def handle_endtag(self, tag):
             top = self.stack.pop() if self.stack else None
             if top != tag:
-                self.mismatched.append((top, tag))
+                self.mismatched.append((top, tag))  # pragma: no cover (fails the test)
 
     sentinel = object()  # its repr has angle brackets
 
